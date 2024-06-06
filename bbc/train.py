@@ -1,64 +1,13 @@
 from dataclasses import dataclass
 from logging import Logger
-from typing import Iterable, Optional
+from typing import Dict, Iterable, List, Optional
 
 import pudb
 import wandb
-from datasets import Dataset, load_from_disk
-from pipelines import RewardPipeline
+from reward_models import RewardModel, SentimentRewardModel
 from transformers import AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
-from trl.core import LengthSampler
-from utils import collator
-
-
-class BBCDataset(Dataset):
-    def __init__(
-        self,
-        ds_path,
-        emotions=["negative", "positive"],
-        tokenizer=None,
-    ):
-        self.ds_path = ds_path
-        self.emotions = emotions
-        self.tokenizer = tokenizer
-        try:
-            self.ds = load_from_disk(self.ds_path + "_tokenized")
-        except FileNotFoundError:
-            self.ds = self._build_dataset()
-            self.ds.save_to_disk(self.ds_path + "_tokenized")
-
-    def _build_dataset(self, input_min_text_length=2, input_max_text_length=8):
-        ds = load_from_disk(self.ds_path)
-
-        self.input_size = LengthSampler(input_min_text_length, input_max_text_length)
-        ds = ds.map(self._tokenize, batched=False)
-        ds = ds.remove_columns(["text", "label"])
-
-        ds.set_format(type="torch")
-        return ds
-
-    def _tokenize(self, sample):
-        if sample["label"] == 0:
-            sample["target"] = 1
-        else:
-            sample["target"] = 0
-        sample["target_label"] = self.emotions[sample["target"]]
-        input_size = self.input_size()
-        sample["prompt"] = self.tokenizer.encode(sample["text"])[:input_size]
-        sample["query"] = self.tokenizer.encode(
-            f"Sentiment: {self.emotions[sample['target']]}. {self.tokenizer.decode(sample['prompt'])}"
-        )
-        return sample
-
-    def __len__(self):
-        return len(self.ds)
-
-    def __getitem__(self, index):
-        return self.ds[index]
-
-    def save_to_disk(self, path):
-        self.ds.save_to_disk(path)
+from utils import BBCDataset, collator
 
 
 @dataclass
@@ -82,7 +31,7 @@ class TrainingConfig:
 
 def train(
     policy_model: AutoModelForCausalLMWithValueHead,
-    reward_model: Iterable[RewardPipeline],
+    reward_model: Iterable[RewardModel],
     train_dataset: BBCDataset,
     logger: Logger,
     wandb_run: wandb.run,
@@ -109,7 +58,6 @@ def train(
         # Training loop
         for epoch in range(config.num_epochs):
             for batch in ppo_trainer.dataloader:
-                pu.db
                 prefix = generate_prefix(batch, ppo_trainer)
                 logger.info(f"Epoch {epoch} - Loss: {loss_value}")
                 wandb_run.log({"loss": loss_value})
@@ -130,7 +78,8 @@ def prepare_ppo_trainer(
     config: TrainingConfig,
 ) -> PPOTrainer:
     """
-    Initialize the `PPOTrainer` class from the `trl` library using the `PPOConfig` class.
+    Initialize the `PPOTrainer` class from the `trl` library using the `PPOConfig`
+        class.
 
     Args:
         policy_model (AutoModelForCausalLMWithValueHead): The model to be trained.
@@ -155,19 +104,38 @@ def prepare_ppo_trainer(
         entropy_coef=config.entropy_coef,
     )
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+    tokenizer.pad_token = tokenizer.eos_token
     ppo_trainer = PPOTrainer(
         ppo_config, policy_model, tokenizer, train_dataset, data_collator=collator
     )
     return ppo_trainer
 
 
-def generate_prefix(batch, ppo_trainer):
+def generate_prefix(
+    batch: Dict, ppo_trainer: PPOTrainer, gen_kwargs: Optional[Dict] = {}
+):
+    """
+    Generate a prefix for each element of the batch.
+
+    Args:
+        batch (Dict): Batch of data.
+        ppo_trainer (PPOTrainer): `PPOTrainer` object from the `trl` library.
+        gen_kwargs (Optional[Dict]): Generation keyword arguments
+    """
+    pu.db
     pass
 
 
 if __name__ == "__main__":
+    # Initialize variables
     config = TrainingConfig()
     policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(config.model_name)
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     tokenizer.pad_token = tokenizer.eos_token
     train_dataset = BBCDataset("/home/rmorain2/bbc/datasets/imdb_sst2", tokenizer)
+    reward_model = SentimentRewardModel()
+    logger = Logger(__name__)
+    run = wandb.init(project="bbc", config=dict(config))
+    policy_model = train(
+        policy_model, [reward_model], train_dataset, logger, run, config
+    )
