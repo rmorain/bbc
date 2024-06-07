@@ -7,7 +7,7 @@ import pudb
 import torch
 import wandb
 from reward_models import RewardModel, SentimentRewardModel
-from transformers import AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
 from utils import collator
 
@@ -35,6 +35,7 @@ class TrainingConfig:
 
 def train(
     policy_model: AutoModelForCausalLMWithValueHead,
+    base_models: AutoModelForCausalLM,
     reward_model: Iterable[RewardModel],
     train_dataset: Dataset,
     logger: Logger,
@@ -63,6 +64,16 @@ def train(
         for epoch in range(config.num_epochs):
             for batch in ppo_trainer.dataloader:
                 prefix = generate_prefix(batch, ppo_trainer, config)
+                prefix_prompt = [
+                    torch.cat((prefix[i], batch["prompt"][i]))
+                    for i in range(config.batch_size)
+                ]
+                continuation = generate_continuation(
+                    prefix_prompt,
+                    base_models,
+                    config,
+                )
+                score = reward_model()
                 logger.info(f"Epoch {epoch} - Loss: {loss_value}")
                 wandb_run.log({"loss": loss_value})
 
@@ -106,6 +117,7 @@ def prepare_ppo_trainer(
         mini_batch_size=config.mini_batch_size,
         init_kl_coef=config.init_kl_coef,
         entropy_coef=config.entropy_coef,
+        remove_unused_columns=False,
     )
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     tokenizer.pad_token = tokenizer.eos_token
@@ -130,17 +142,18 @@ def generate_prefix(
         "do_sample": True,
         "output_scores": True,
     },
-) -> List[torch.Tensor]:
+) -> List[torch.LongTensor]:
     """
     Generate a prefix for each element of the batch.
 
     Args:
         batch (Dict): Batch of data.
         ppo_trainer (PPOTrainer): `PPOTrainer` object from the `trl` library.
+        config (TrainingConfig): The configuration object containing hyperparameters.
         gen_kwargs (Optional[Dict]): Generation keyword arguments
 
     Returns:
-        List[torch.Tensor]: A list (batch size) of tensors containing prefix tokens.
+        List[torch.LongTensor]: A list (batch size) of tensors containing prefix tokens.
     """
     query_prefix = ppo_trainer.generate(
         batch["query"],
@@ -155,6 +168,50 @@ def generate_prefix(
     return prefix
 
 
+def generate_continuation(
+    prefix_prompt: List[torch.LongTensor],
+    base_models: List[AutoModelForCausalLM],
+    config: TrainingConfig,
+    gen_kwargs: Optional[Dict] = {
+        "min_length": -1,
+        "top_k": 0.0,
+        "top_p": 1.0,
+        "do_sample": False,
+        "output_scores": True,
+    },
+) -> List[List[torch.LongTensor]]:
+    """
+    Generates continuations from a (prefix, prompt) pair.
+
+    Args:
+        prefix_prompt (List[torch.LongTensor]): A list (batch size) of prefix tensors
+            prepended to prompt tensors.
+        base_models (AutoModelForCausalLM): A list of language models to be controlled
+            by the policy model.
+        config (TrainingConfig): The configuration object containing hyperparameters.
+        gen_kwargs (Optional[Dict]): Generation keyword arguments
+
+    Returns:
+        List[torch.LongTensor]: A list (len(base_models)) of lists (batch size) of
+            tensors containing continuation tokens.
+    """
+    continuations = []
+    with torch.no_grad():
+        for i, model in enumerate(base_models):
+            model = model.to("cuda")
+            continuations.append([])
+            for x in prefix_prompt:
+                prefix_prompt_continuation = model.generate(
+                    x.unsqueeze(0),
+                    max_new_tokens=config.continuation_length,
+                    **gen_kwargs,
+                ).squeeze(0)
+                continuation = prefix_prompt_continuation[len(x) :]
+                continuations[i].append(continuation)
+            model = model.to("cpu")
+    return continuations
+
+
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser()
@@ -164,6 +221,7 @@ if __name__ == "__main__":
     # Initialize variables
     config = TrainingConfig()
     policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(config.model_name)
+    base_model = AutoModelForCausalLM.from_pretrained(config.model_name)
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     tokenizer.pad_token = tokenizer.eos_token
     train_dataset = load_from_disk("/home/rmorain2/bbc/datasets/imdb_sst2_tokenized")
@@ -176,5 +234,5 @@ if __name__ == "__main__":
     logger = Logger(__name__)
     run = wandb.init(project="bbc", config=asdict(config))
     policy_model = train(
-        policy_model, [reward_model], train_dataset, logger, run, config
+        policy_model, [base_model], [reward_model], train_dataset, logger, run, config
     )
