@@ -1,13 +1,17 @@
-from dataclasses import dataclass
+import argparse
+from dataclasses import asdict, dataclass
 from logging import Logger
 from typing import Dict, Iterable, List, Optional
 
 import pudb
+import torch
 import wandb
 from reward_models import RewardModel, SentimentRewardModel
 from transformers import AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
-from utils import BBCDataset, collator
+from utils import collator
+
+from datasets import Dataset, load_from_disk
 
 
 @dataclass
@@ -32,7 +36,7 @@ class TrainingConfig:
 def train(
     policy_model: AutoModelForCausalLMWithValueHead,
     reward_model: Iterable[RewardModel],
-    train_dataset: BBCDataset,
+    train_dataset: Dataset,
     logger: Logger,
     wandb_run: wandb.run,
     config: TrainingConfig,
@@ -58,7 +62,7 @@ def train(
         # Training loop
         for epoch in range(config.num_epochs):
             for batch in ppo_trainer.dataloader:
-                prefix = generate_prefix(batch, ppo_trainer)
+                prefix = generate_prefix(batch, ppo_trainer, config)
                 logger.info(f"Epoch {epoch} - Loss: {loss_value}")
                 wandb_run.log({"loss": loss_value})
 
@@ -74,7 +78,7 @@ def train(
 
 def prepare_ppo_trainer(
     policy_model: AutoModelForCausalLMWithValueHead,
-    train_dataset: BBCDataset,
+    train_dataset: Dataset,
     config: TrainingConfig,
 ) -> PPOTrainer:
     """
@@ -106,14 +110,27 @@ def prepare_ppo_trainer(
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     tokenizer.pad_token = tokenizer.eos_token
     ppo_trainer = PPOTrainer(
-        ppo_config, policy_model, tokenizer, train_dataset, data_collator=collator
+        config=ppo_config,
+        model=policy_model,
+        tokenizer=tokenizer,
+        dataset=train_dataset,
+        data_collator=collator,
     )
     return ppo_trainer
 
 
 def generate_prefix(
-    batch: Dict, ppo_trainer: PPOTrainer, gen_kwargs: Optional[Dict] = {}
-):
+    batch: Dict,
+    ppo_trainer: PPOTrainer,
+    config: TrainingConfig,
+    gen_kwargs: Optional[Dict] = {
+        "min_length": -1,
+        "top_k": 0.0,
+        "top_p": 1.0,
+        "do_sample": True,
+        "output_scores": True,
+    },
+) -> List[torch.Tensor]:
     """
     Generate a prefix for each element of the batch.
 
@@ -121,21 +138,43 @@ def generate_prefix(
         batch (Dict): Batch of data.
         ppo_trainer (PPOTrainer): `PPOTrainer` object from the `trl` library.
         gen_kwargs (Optional[Dict]): Generation keyword arguments
+
+    Returns:
+        List[torch.Tensor]: A list (batch size) of tensors containing prefix tokens.
     """
-    pu.db
-    pass
+    query_prefix = ppo_trainer.generate(
+        batch["query"],
+        max_new_tokens=config.prefix_length,
+        pad_token_id=ppo_trainer.tokenizer.eos_token_id,
+        **gen_kwargs,
+    )
+    prefix = [
+        query_prefix[i][len(batch["query"][i]) :] for i in range(len(query_prefix))
+    ]
+
+    return prefix
 
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    args = parser.parse_args()
+
     # Initialize variables
     config = TrainingConfig()
     policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(config.model_name)
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     tokenizer.pad_token = tokenizer.eos_token
-    train_dataset = BBCDataset("/home/rmorain2/bbc/datasets/imdb_sst2", tokenizer)
+    train_dataset = load_from_disk("/home/rmorain2/bbc/datasets/imdb_sst2_tokenized")
+    if args.debug:
+        debug_batch_size = 8
+        train_dataset = train_dataset.select(range(debug_batch_size))
+        config.batch_size = debug_batch_size
+        config.mini_batch_size = debug_batch_size
     reward_model = SentimentRewardModel()
     logger = Logger(__name__)
-    run = wandb.init(project="bbc", config=dict(config))
+    run = wandb.init(project="bbc", config=asdict(config))
     policy_model = train(
         policy_model, [reward_model], train_dataset, logger, run, config
     )
