@@ -1,10 +1,11 @@
 import argparse
 from dataclasses import asdict, dataclass
 from logging import Logger
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import pudb
 import torch
+import torch.nn.functional as F
 import wandb
 from reward_models import RewardModel, SentimentRewardModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -35,8 +36,8 @@ class TrainingConfig:
 
 def train(
     policy_model: AutoModelForCausalLMWithValueHead,
-    base_models: AutoModelForCausalLM,
-    reward_model: Iterable[RewardModel],
+    base_models: Iterable[AutoModelForCausalLM],
+    reward_models: Iterable[RewardModel],
     train_dataset: Dataset,
     logger: Logger,
     wandb_run: wandb.run,
@@ -47,18 +48,24 @@ def train(
 
     Args:
         policy_model (AutoModelForCausalLMWithValueHead): The model to be trained.
-        reward_model (Iterable[RewardPipeline]): The reward model used for training.
+        base_models (Iterable[AutoModelForCausalLM]): Models to be controlled.
+        reward_model (Iterable[RewardModel]): The reward model used for training.
         train_dataset (Dataset): The training dataset.
         logger (Logger): The logger instance for logging.
         wandb_run (wandb.run): The Weights and Biases run object for logging.
         config (TrainingConfig): The configuration object containing hyperparameters.
 
     Returns:
-        Optional[AutoModelForCausalLMWithValueHead]: The trained policy model, or None if training failed.
+        Optional[AutoModelForCausalLMWithValueHead]: The trained policy model, or None
+            if training failed.
     """
     try:
         # Pre-training setup
         ppo_trainer = prepare_ppo_trainer(policy_model, train_dataset, config)
+        base_models = [ppo_trainer.accelerator.prepare(model) for model in base_models]
+        reward_models = [
+            model.to(ppo_trainer.accelerator.device) for model in base_models
+        ]
 
         # Training loop
         for epoch in range(config.num_epochs):
@@ -68,12 +75,16 @@ def train(
                     torch.cat((prefix[i], batch["prompt"][i]))
                     for i in range(config.batch_size)
                 ]
-                continuation = generate_continuation(
+                rewards, accuracy = compute_reward(
+                    batch,
                     prefix_prompt,
                     base_models,
+                    reward_models,
+                    ppo_trainer.tokenizer,
                     config,
                 )
-                score = reward_model()
+                mask = prefix_prompt_mask(prefix, prefix_prompt)
+                stats = ppo_trainer.step(batch["query"], prefix_prompt, rewards, mask)
                 logger.info(f"Epoch {epoch} - Loss: {loss_value}")
                 wandb_run.log({"loss": loss_value})
 
@@ -168,6 +179,36 @@ def generate_prefix(
     return prefix
 
 
+def compute_reward(
+    batch: Dict,
+    prefix_prompt: List[torch.LongTensor],
+    base_models: List[AutoModelForCausalLM],
+    reward_models: List[RewardModel],
+    tokenizer: AutoTokenizer,
+    config: TrainingConfig,
+) -> List[float]:
+    """
+    Compute a reward for each (prompt, continuation) pair.
+
+    Args:
+        batch (Dict): Batch of query, prompt, and target data.
+        prefix_prompt (List[torch.LongTensor]): A list (batch size) of prefix tensors
+            prepended to prompt tensors.
+        base_models (AutoModelForCausalLM): A list of language models to be controlled
+            by the policy model.
+        reward_models (List[RewardModel]): A list of reward models.
+        tokenizer (AutoTokenizer): A tokenizer.
+        config (TrainingConfig): The configuration object containing hyperparameters.
+
+    Returns:
+        List[float]: A list (batch size) of reward values.
+    """
+    continuation = generate_continuation(prefix_prompt, base_models, config)
+    scores = compute_scores(batch, continuation, reward_models, tokenizer)
+    reward, accuracy = process_scores(scores, batch["target"], len(base_models))
+    pass
+
+
 def generate_continuation(
     prefix_prompt: List[torch.LongTensor],
     base_models: List[AutoModelForCausalLM],
@@ -192,24 +233,122 @@ def generate_continuation(
         gen_kwargs (Optional[Dict]): Generation keyword arguments
 
     Returns:
-        List[torch.LongTensor]: A list (len(base_models)) of lists (batch size) of
+        List[List[torch.LongTensor]]: A list (len(base_models)) of lists (batch size) of
             tensors containing continuation tokens.
     """
     continuations = []
     with torch.no_grad():
         for i, model in enumerate(base_models):
-            model = model.to("cuda")
             continuations.append([])
             for x in prefix_prompt:
+                # attention_mask = torch.ones_like(x)
                 prefix_prompt_continuation = model.generate(
                     x.unsqueeze(0),
                     max_new_tokens=config.continuation_length,
+                    # attention_mask=attention_mask,
+                    pad_token_id=model.config.eos_token_id,
                     **gen_kwargs,
                 ).squeeze(0)
                 continuation = prefix_prompt_continuation[len(x) :]
                 continuations[i].append(continuation)
-            model = model.to("cpu")
     return continuations
+
+
+def compute_scores(
+    batch: Dict,
+    continuation: List[List[torch.LongTensor]],
+    base_models: List[AutoModelForCausalLM],
+    reward_models: List[RewardModel],
+    tokenizer: AutoTokenizer,
+) -> List[List[float]]:
+    """
+    Compute scores for each (prompt, continuation) pair.
+
+    Args:
+        batch (Dict): Batch of query, prompt, and target data.
+        continuation List[List[torch.LongTensor]]: A list (len(base_models)) of lists
+            (batch size) of tensors containing continuation tokens.
+        base_models (AutoModelForCausalLM): A list of language models to be controlled
+            by the policy model.
+        reward_models (List[RewardModel]): A list of reward models.
+        tokenizer (AutoTokenizer): A tokenizer.
+
+    Returns:
+        List[float]: A list (batch size) of scores.
+    """
+    # (num base models * batch size)
+    prompt_continuation = []
+    # For base models
+    for base_model in continuation:
+        for p, c in zip(batch["prompt"], base_model):
+            pc = torch.cat((p, c))
+            pc_str = tokenizer.decode(pc)
+            prompt_continuation.append(pc_str)
+    # (num reward models, num base models * batch size, num classes)
+    scores = []
+    for model in reward_models:
+        s = model(prompt_continuation)
+        scores.append(s)
+    scores_tensor = torch.tensor(scores).reshape(
+        (len(reward_models, len(base_models), len(batch["prompt"]), len(scores[0][0])))
+    )
+    # (batch size, num classes)
+    mean_scores = scores_tensor.mean(0).mean(0)
+    reward = F.softmax(mean_scores, dim=1)
+    accuracy = mean_scores.argmax(1) == batch["target"]
+    return reward, accuracy
+
+
+def prefix_prompt_mask(
+    prefix: List[torch.LongTensor], prefix_prompt: List[torch.LongTensor]
+) -> List[torch.LongTensor]:
+    """
+    Generates a mask that keeps prefix tokens and removes prompt tokens.
+
+    Args:
+        prefix (List[torch.LongTensor]): A list (batch size) of prefix tensors.
+        prefix_prompt (List[torch.LongTensor]): A list (batch size) of prefix tensors
+            prepended to prompt tensors.
+
+    Returns:
+        List[torch.LongTensor]: A list (batch size) of mask values for each (prefix,
+            prompt) pair.
+    """
+    mask = []
+    for p, r in zip(prefix, prefix_prompt):
+        prefix_mask = torch.ones(len(p), dtype=torch.long)
+        prompt_mask = torch.zeros(len(r) - len(p), dtype=torch.long)
+        prefix_prompt_mask = torch.cat((prefix_mask, prompt_mask), dim=0)
+        mask.append(prefix_prompt_mask)
+    return mask
+
+
+def process_scores(
+    class_scores: List[List[float]], target: List[int], num_base_models: int
+) -> Tuple[List[float], List[bool]]:
+    """
+    Processes the raw scores into reward values.
+
+    Args:
+        class_scores (List[List[List[float]]]): A List (batch size * number of base models) of
+            Lists (number of classes) containing scores.
+        target (List[int]): A List (batch size) of indices of the correct class.
+        num_base_models (int): The number of base models used to create class_scores.
+
+    Returns:
+        Tuple[List[float], List[bool]]: A tuple containing two lists:
+            - List (batch size * number of base models) of reward values
+            - List (batch size * number of base models) of accuracy successes and
+                failures.
+    """
+    scores = torch.tensor(class_scores)
+    # (batch size, num base models, num classes)
+    scores = scores.reshape((len(target), num_base_models, len(class_scores[0])))
+    rewards = F.softmax(scores, dim=2)
+    predictions = torch.argmax(scores, dim=2)  # (batch size, num base models)
+    target = torch.tensor(target).unsqueeze(1)
+    accuracy = predictions == target
+    return rewards, accuracy
 
 
 if __name__ == "__main__":

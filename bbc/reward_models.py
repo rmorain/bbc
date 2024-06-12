@@ -40,6 +40,19 @@ class RewardModel:
         """
         raise NotImplementedError("Subclasses must implement the __call__ method")
 
+    def to(self, device: torch.device) -> None:
+        """
+        Set the device for the RewardModel.
+
+        Args:
+            device (torch.device): The device to use for the RewardModel.
+
+        Returns:
+            None
+        """
+
+        raise NotImplementedError("Subclasses must implement the to method")
+
 
 class SentimentRewardModel(RewardModel):
     """
@@ -83,7 +96,29 @@ class SentimentRewardModel(RewardModel):
     def __call__(
         self, input_string: Union[str, List[str]]
     ) -> List[Optional[List[float]]]:
+        """
+        Assigns scores for each input string.
 
+        Args:
+            input_string (Union[str, List[str]]): A List (batch size) of strings to be
+                evaluated.
+
+        Returns:
+            List[Optional[List[float]]]: A List (batch size) of Lists (number of
+                classes) containing scores.
+        """
         prediction = self.reward_model(input_string, **self.kwargs)
         scores = [[y["score"] for y in x] for x in prediction]
         return scores
+
+    def to(self, device: torch.device) -> None:
+        """
+        Set the device for the RewardModel.
+
+        Args:
+            device (torch.device): The device to use for the RewardModel.
+
+        Returns:
+            None
+        """
+        self.reward_model.model.to(device)
