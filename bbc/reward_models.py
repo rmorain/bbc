@@ -92,6 +92,7 @@ class SentimentRewardModel(RewardModel):
             device=device,
         )
         self.kwargs = kwargs
+        self.device = device
 
     def __call__(
         self, input_string: Union[str, List[str]]
@@ -121,4 +122,7 @@ class SentimentRewardModel(RewardModel):
         Returns:
             None
         """
-        self.reward_model.model.to(device)
+        self.reward_model.model = self.reward_model.model.to(device)
+        self.reward_model.device = device
+        self.device = device
+        return self
