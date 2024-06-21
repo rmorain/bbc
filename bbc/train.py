@@ -78,7 +78,7 @@ def train(
                 prefix_prompt = [
                     prefix + prompt for prefix, prompt in zip(prefixes, prompts)
                 ]
-                rewards = compute_reward(
+                rewards, perplexity = compute_reward(
                     prompts,
                     prefix_prompt,
                     base_models,
@@ -87,18 +87,22 @@ def train(
                     config,
                 )
                 targets = torch.tensor(batch["target"])
-                accuracy = rewards.argmax(-1) == targets
-                target_rewards = rewards[:, targets].tolist()
+                accuracy = (rewards.argmax(-1) == targets).long()
+                target_rewards = torch.gather(rewards, 1, targets.unsqueeze(1))
+                target_rewards = [r for r in target_rewards]
 
-                mask = prefix_prompt_mask(prefixes, prefix_prompt)
+                prefix_ids = ppo_trainer.tokenizer(prefixes).input_ids
+                prefix_prompt_ids = ppo_trainer.tokenizer(prefix_prompt).input_ids
+                prefix_prompt_ids = [torch.tensor(ids) for ids in prefix_prompt_ids]
+                mask = prefix_prompt_mask(prefix_ids, prefix_prompt_ids)
                 stats = ppo_trainer.step(
-                    batch["query"], prefix_prompt, target_rewards, mask
+                    batch["query"], prefix_prompt_ids, target_rewards, mask
                 )
-                stats["env/accuracy"] = torch.mean(accuracy).cpu().numpy().item()
+                stats["env/accuracy"] = (
+                    torch.mean(accuracy.float()).cpu().numpy().item()
+                )
+                stats["env/perplexity"] = perplexity
                 ppo_trainer.log_stats(stats, batch, target_rewards, columns_to_log=[])
-
-        # Post-training tasks
-        # ...
 
         return policy_model
 
@@ -218,9 +222,11 @@ def compute_reward(
     """
     continuation = generate_continuation(prefix_prompt, base_models, tokenizers, config)
     mean_perplexity = perplexity(prompts, continuation, base_models, tokenizers)
-    scores = compute_scores(batch, continuation, base_models, reward_models, tokenizers)
+    scores = compute_scores(
+        prompts, continuation, base_models, reward_models, tokenizers
+    )
     rewards = F.softmax(scores, dim=-1)
-    return rewards
+    return rewards, mean_perplexity
 
 
 def generate_continuation(
@@ -278,7 +284,7 @@ def generate_continuation(
 
 
 def compute_scores(
-    batch: Dict,
+    prompts: List[str],
     continuation: List[List[torch.LongTensor]],
     base_models: List[AutoModelForCausalLM],
     reward_models: List[RewardModel],
@@ -288,7 +294,7 @@ def compute_scores(
     Computes a score from each (prompt, continuation) pair for each reward model.
 
     Args:
-        batch (Dict): Batch of query, prompt, and target data.
+        prompts (List[str]): A list (batch size) of prompt strings.
         continuation List[List[torch.LongTensor]]: A list (len(base_models)) of lists
             (batch size) of tensors containing continuation tokens.
         base_models (AutoModelForCausalLM): A list of language models to be controlled
@@ -301,20 +307,20 @@ def compute_scores(
         List[float]: A list (batch size) of scores.
     """
     # (num base models * batch size)
-    prompt_continuation = []
+    # TODO: use prompts instead
+    prompt_continuations = []
     # For base models
     for base_model_continuations, tokenizer in zip(continuation, tokenizers):
-        for p, c in zip(batch["prompt"], base_model_continuations):
-            pc = torch.cat((p, c))
-            pc_str = tokenizer.decode(pc)
-            prompt_continuation.append(pc_str)
+        for prompt, continuation in zip(prompts, base_model_continuations):
+            prompt_continuation = prompt + continuation
+            prompt_continuations.append(prompt_continuation)
     # (num reward models, num base models * batch size, num classes)
     scores = []
     for model in reward_models:
-        s = model(prompt_continuation)
+        s = model(prompt_continuations)
         scores.append(s)
     scores_tensor = torch.tensor(scores).reshape(
-        (len(reward_models), len(base_models), len(batch["prompt"]), len(scores[0][0]))
+        (len(reward_models), len(base_models), len(prompts), len(scores[0][0]))
     )
 
     # (batch size, num classes)
@@ -368,17 +374,26 @@ def perplexity(
     Returns:
         float: Mean perplexity across base models and continuations.
     """
-    # TODO: Add prompt before continuation
     losses = []
     for base_model, tokenizer, base_model_continuations in zip(
         base_models, tokenizers, continuations
     ):
-        prompt_continuations = [p + c for p, c in zip(prompts, continuations)]
+        prompt_continuations = [
+            p + c for p, c in zip(prompts, base_model_continuations)
+        ]
         inputs = tokenizer(prompt_continuations, padding=True, return_tensors="pt")
         input_ids = inputs.input_ids.to(base_model.device)
         attention_mask = inputs.attention_mask.to(base_model.device)
         target_ids = input_ids.clone()
-        target_ids[attention_mask == 0] = -100
+        continuation_ids = tokenizer(base_model_continuations).input_ids
+        continuation_lengths = torch.tensor(
+            [len(continuation) for continuation in continuation_ids]
+        )
+        for target, i in zip(target_ids, continuation_lengths):
+            j = len(target) - i
+            target[:j] = -100
+
+        # make prompt ids in target ids -100
         outputs = base_model(
             input_ids=input_ids, attention_mask=attention_mask, labels=target_ids
         )
@@ -402,7 +417,7 @@ if __name__ == "__main__":
     ]
     for t in base_model_tokenizers:
         t.pad_token = t.eos_token
-    train_dataset = load_from_disk("/home/rmorain2/bbc/datasets/imdb_sst2_tokenized")
+    train_dataset = load_from_disk("../datasets/imdb_sst2_tokenized")
     if args.debug:
         debug_batch_size = 8
         train_dataset = train_dataset.select(range(debug_batch_size))

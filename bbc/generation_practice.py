@@ -8,8 +8,7 @@ model = AutoModelForCausalLM.from_pretrained(model_str)
 
 strings = ["hi", "Hello, world!"]
 
-pu.db
-inputs = tokenizer(strings, padding=True, return_tensors="pt", padding_side="right")
+inputs = tokenizer(strings, padding=True, return_tensors="pt")
 target_ids = inputs.input_ids.clone()
 target_ids[inputs.attention_mask == 0] = -100
 outputs = model(**inputs, labels=inputs["input_ids"])

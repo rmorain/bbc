@@ -67,7 +67,7 @@ class SentimentRewardModel(RewardModel):
         ] = "distilbert/distilbert-base-uncased-finetuned-sst-2-english",
         device: Optional[Union[torch.device, int]] = -1,
         kwargs: Optional[Dict] = {
-            "return_all_scores": True,
+            "top_k": None,  # Return all scores
             "function_to_apply": "none",
             "batch_size": 16,
         },
