@@ -78,7 +78,7 @@ def train(
                 prefix_prompt = [
                     prefix + prompt for prefix, prompt in zip(prefixes, prompts)
                 ]
-                rewards, perplexity = compute_reward(
+                rewards, perplexity, diversity = compute_reward(
                     prompts,
                     prefix_prompt,
                     base_models,
@@ -102,7 +102,13 @@ def train(
                     torch.mean(accuracy.float()).cpu().numpy().item()
                 )
                 stats["env/perplexity"] = perplexity
-                ppo_trainer.log_stats(stats, batch, target_rewards, columns_to_log=[])
+                stats["env/distinctness-unigram"] = diversity[0]
+                stats["env/distinctness-bigram"] = diversity[1]
+                stats["env/distinctness-trigram"] = diversity[2]
+
+                batch["response"] = prefixes
+                batch["query"] = ppo_trainer.tokenizer.batch_decode(batch["query"])
+                ppo_trainer.log_stats(stats, batch, target_rewards)
 
         return policy_model
 
@@ -222,11 +228,12 @@ def compute_reward(
     """
     continuation = generate_continuation(prefix_prompt, base_models, tokenizers, config)
     mean_perplexity = perplexity(prompts, continuation, base_models, tokenizers)
+    diversity = distinctness(continuation)
     scores = compute_scores(
         prompts, continuation, base_models, reward_models, tokenizers
     )
     rewards = F.softmax(scores, dim=-1)
-    return rewards, mean_perplexity
+    return rewards, mean_perplexity, diversity
 
 
 def generate_continuation(
@@ -402,6 +409,38 @@ def perplexity(
     return perplexity
 
 
+def distinctness(continuations: List[List[str]]) -> tuple[float]:
+    """
+    Evaluate the number of unique unigrams, bigrams, and trigrams in the list of
+        strings.
+
+    Args:
+        continuations (List[List[str]]): A list (len(base_models)) of lists
+            (batch size) of tensors containing continuation strings.
+    """
+    total_words = 0
+    unigrams, bigrams, trigrams = set(), set(), set()
+
+    for base_model_continuations in continuations:
+        for continuation in base_model_continuations:
+            o = continuation.split(" ")
+            total_words += len(o)
+            unigrams.update(o)
+            for i in range(len(o) - 1):
+                bigrams.add(o[i] + "_" + o[i + 1])
+            for i in range(len(o) - 2):
+                trigrams.add(o[i] + "_" + o[i + 1] + "_" + o[i + 2])
+
+    if total_words == 0:
+        return 0.0, 0.0, 0.0
+
+    dist1 = len(unigrams) / total_words
+    dist2 = len(bigrams) / total_words
+    dist3 = len(trigrams) / total_words
+
+    return dist1, dist2, dist3
+
+
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser()
@@ -420,12 +459,18 @@ if __name__ == "__main__":
     train_dataset = load_from_disk("../datasets/imdb_sst2_tokenized")
     if args.debug:
         debug_batch_size = 8
-        train_dataset = train_dataset.select(range(debug_batch_size))
+        train_dataset = train_dataset.select(range(debug_batch_size * 2))
         config.batch_size = debug_batch_size
         config.mini_batch_size = debug_batch_size
     reward_model = SentimentRewardModel()
     logger = Logger(__name__)
-    run = wandb.init(project="bbc", config=asdict(config))
+
+    wandb.require("core")
+    if args.debug:
+        run = wandb.init(project="bbc-test", config=asdict(config))
+    else:
+        run = wandb.init(project="bbc", config=asdict(config))
+
     policy_model = train(
         policy_model,
         [base_model],
