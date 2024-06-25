@@ -1,4 +1,5 @@
 import argparse
+import os
 import traceback
 from dataclasses import asdict, dataclass
 from logging import Logger
@@ -456,7 +457,9 @@ if __name__ == "__main__":
     ]
     for t in base_model_tokenizers:
         t.pad_token = t.eos_token
-    train_dataset = load_from_disk("../datasets/imdb_sst2_tokenized")
+    train_dataset = load_from_disk(
+        os.environ.get("DATASETS_PATH") + "imdb_sst2_tokenized"
+    )
     if args.debug:
         debug_batch_size = 8
         train_dataset = train_dataset.select(range(debug_batch_size * 2))

@@ -201,3 +201,5 @@ dependencies:
       - wandb==0.17.0
       - wcwidth==0.2.13
 prefix: /home/rmorain2/.conda/envs/bbc
+variables: 
+  DATASETS_PATH: /home/rmorain2/bbc/datasets/
