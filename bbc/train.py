@@ -33,6 +33,7 @@ class TrainingConfig:
     entropy_coef: float = 1e-3
     prefix_length: int = 15
     continuation_length: int = 20
+    continuation_max_str_length: int = 400
 
 
 def train(
@@ -284,7 +285,7 @@ def generate_continuation(
                 skip_special_tokens=True,
             )
             continuation = [
-                s[len(pp) :]
+                s[len(pp) : config.continuation_max_str_length]
                 for s, pp in zip(prefix_prompt_continuation_str, prefix_prompt)
             ]
             continuations.append(continuation)
