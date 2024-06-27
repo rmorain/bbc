@@ -108,9 +108,18 @@ def train(
                 stats["env/distinctness-bigram"] = diversity[1]
                 stats["env/distinctness-trigram"] = diversity[2]
 
-                batch["response"] = prefixes
-                batch["query"] = ppo_trainer.tokenizer.batch_decode(batch["query"])
-                ppo_trainer.log_stats(stats, batch, target_rewards)
+                batch["prefix"] = prefixes
+                batch["prompt"] = prompts
+                ppo_trainer.log_stats(
+                    stats,
+                    batch,
+                    target_rewards,
+                    columns_to_log=[
+                        "prefix",
+                        "prompt",
+                        "target_label",
+                    ],
+                )
 
         return policy_model
 
