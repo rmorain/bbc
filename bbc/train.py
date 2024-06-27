@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass
 from logging import Logger
 from typing import Dict, List, Optional
 
-import pudb
 import torch
 import torch.nn.functional as F
 from reward_models import RewardModel, SentimentRewardModel
@@ -66,7 +65,8 @@ def train(
     try:
         # Pre-training setup
         ppo_trainer = prepare_ppo_trainer(policy_model, train_dataset, config)
-        base_models = [ppo_trainer.accelerator.prepare(model) for model in base_models]
+        base_models = ppo_trainer.accelerator.prepare(base_models)
+        logger.info(base_models)
         reward_models = [
             model.to(ppo_trainer.accelerator.device) for model in reward_models
         ]
