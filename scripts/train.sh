@@ -11,4 +11,5 @@
 #SBATCH --output=/home/rmorain2/bbc/logs/slurm-%j.out
 #
 wandb enabled
+export DATASETS_PATH="/home/rmorain2/bbc/datasets/"
 accelerate launch --config_file=/home/rmorain2/bbc/multi_gpu.yaml --num_processes 2 /home/rmorain2/bbc/bbc/train.py
