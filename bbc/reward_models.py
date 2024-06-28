@@ -67,8 +67,8 @@ class SentimentRewardModel(RewardModel):
         ] = "distilbert/distilbert-base-uncased-finetuned-sst-2-english",
         device: Optional[Union[torch.device, int]] = -1,
         kwargs: Optional[Dict] = {
-            "top_k": None,  # Return all scores
-            "function_to_apply": "none",
+            "top_k": 2,
+            "function_to_apply": "softmax",
             "batch_size": 16,
         },
     ):
@@ -109,7 +109,7 @@ class SentimentRewardModel(RewardModel):
                 classes) containing scores.
         """
         prediction = self.reward_model(input_string, **self.kwargs)
-        scores = [[y["score"] for y in x] for x in prediction]
+        scores = self.process_sentiment_output(prediction)
         return scores
 
     def to(self, device: torch.device) -> None:
@@ -126,3 +126,12 @@ class SentimentRewardModel(RewardModel):
         self.reward_model.device = device
         self.device = device
         return self
+
+    def process_sentiment_output(self, model_output):
+        return [
+            [
+                next(item["score"] for item in sample if item["label"] == "NEGATIVE"),
+                next(item["score"] for item in sample if item["label"] == "POSITIVE"),
+            ]
+            for sample in model_output
+        ]

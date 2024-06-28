@@ -1,12 +1,14 @@
 import argparse
 import os
+import csv
 import traceback
 from dataclasses import asdict, dataclass
 from logging import Logger
+from datetime import datetime
+
 from typing import Dict, List, Optional
 
 import torch
-import torch.nn.functional as F
 from reward_models import RewardModel, SentimentRewardModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
@@ -64,64 +66,123 @@ def train(
             if training failed.
     """
     try:
-        # Pre-training setup
-        ppo_trainer = prepare_ppo_trainer(policy_model, train_dataset, config)
-        base_models = ppo_trainer.accelerator.prepare(base_models)
-        logger.info(base_models)
-        reward_models = [
-            model.to(ppo_trainer.accelerator.device) for model in reward_models
-        ]
+        # Create a directory for logs if it doesn't exist
+        log_dir = os.path.join(os.getcwd(), "local_logs")
+        os.makedirs(log_dir, exist_ok=True)
 
-        # Training loop
-        for _ in range(config.num_epochs):
-            for batch in ppo_trainer.dataloader:
-                prefixes = generate_prefix(batch, ppo_trainer, config)
-                prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
-                prefix_prompt = [
-                    prefix + prompt for prefix, prompt in zip(prefixes, prompts)
+        # Create a unique log file name
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(log_dir, f"training_log_{timestamp}.csv")
+
+        # Open the CSV file for writing
+        with open(log_file, "w", newline="") as csvfile:
+            csv_writer = csv.writer(csvfile)
+
+            # Write the header
+            csv_writer.writerow(
+                [
+                    "Epoch",
+                    "Batch",
+                    "Prefix",
+                    "Prompt",
+                    "Model Type",
+                    "Continuation",
+                    "Target Label",
+                    "Reward",
+                    "Correct",
                 ]
-                rewards, perplexity, diversity = compute_reward(
-                    prompts,
-                    prefix_prompt,
-                    base_models,
-                    tokenizers,
-                    reward_models,
-                    config,
-                )
-                targets = torch.tensor(batch["target"])
-                accuracy = (rewards.argmax(-1) == targets).long()
-                target_rewards = torch.gather(rewards, 1, targets.unsqueeze(1))
-                target_rewards = [r for r in target_rewards]
+            )
 
-                prefix_ids = ppo_trainer.tokenizer(prefixes).input_ids
-                prefix_prompt_ids = ppo_trainer.tokenizer(prefix_prompt).input_ids
-                prefix_prompt_ids = [torch.tensor(ids) for ids in prefix_prompt_ids]
-                mask = prefix_prompt_mask(prefix_ids, prefix_prompt_ids)
-                stats = ppo_trainer.step(
-                    batch["query"], prefix_prompt_ids, target_rewards, mask
-                )
-                stats["env/accuracy"] = (
-                    torch.mean(accuracy.float()).cpu().numpy().item()
-                )
-                stats["env/perplexity"] = perplexity
-                stats["env/distinctness-unigram"] = diversity[0]
-                stats["env/distinctness-bigram"] = diversity[1]
-                stats["env/distinctness-trigram"] = diversity[2]
+            # Pre-training setup
+            ppo_trainer = prepare_ppo_trainer(policy_model, train_dataset, config)
+            base_models = ppo_trainer.accelerator.prepare(base_models)
+            logger.info(base_models)
+            reward_models = [
+                model.to(ppo_trainer.accelerator.device) for model in reward_models
+            ]
 
-                batch["prefix"] = prefixes
-                batch["prompt"] = prompts
-                ppo_trainer.log_stats(
-                    stats,
-                    batch,
-                    target_rewards,
-                    columns_to_log=[
-                        "prefix",
-                        "prompt",
-                        "target_label",
-                    ],
-                )
+            # Training loop
+            for epoch in range(config.num_epochs):
+                for batch_num, batch in enumerate(ppo_trainer.dataloader):
+                    prefixes = generate_prefix(batch, ppo_trainer, config)
+                    prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
+                    prefix_prompt = [
+                        prefix + prompt for prefix, prompt in zip(prefixes, prompts)
+                    ]
+                    rewards, perplexity, diversity, continuations = compute_reward(
+                        prompts,
+                        prefix_prompt,
+                        base_models,
+                        tokenizers,
+                        reward_models,
+                        config,
+                    )
+                    targets = torch.tensor(batch["target"])
+                    accuracy = (rewards.argmax(-1) == targets).long()
+                    target_rewards = torch.gather(rewards, 1, targets.unsqueeze(1))
+                    target_rewards = [r for r in target_rewards]
 
-        return policy_model
+                    prefix_ids = ppo_trainer.tokenizer(prefixes).input_ids
+                    prefix_prompt_ids = ppo_trainer.tokenizer(prefix_prompt).input_ids
+                    prefix_prompt_ids = [torch.tensor(ids) for ids in prefix_prompt_ids]
+                    mask = prefix_prompt_mask(prefix_ids, prefix_prompt_ids)
+                    stats = ppo_trainer.step(
+                        batch["query"], prefix_prompt_ids, target_rewards, mask
+                    )
+                    stats["env/accuracy"] = (
+                        torch.mean(accuracy.float()).cpu().numpy().item()
+                    )
+                    stats["env/perplexity"] = perplexity
+                    stats["env/distinctness-unigram"] = diversity[0]
+                    stats["env/distinctness-bigram"] = diversity[1]
+                    stats["env/distinctness-trigram"] = diversity[2]
+
+                    batch["prefix"] = prefixes
+                    batch["prompt"] = prompts
+                    ppo_trainer.log_stats(
+                        stats,
+                        batch,
+                        target_rewards,
+                        columns_to_log=[],
+                    )
+                    # Write detailed logs to CSV
+                    for base_model_continuation, base_model in zip(
+                        continuations, base_models
+                    ):
+                        for (
+                            prefix,
+                            prompt,
+                            continuation,
+                            target,
+                            reward,
+                            correct,
+                        ) in zip(
+                            prefixes,
+                            prompts,
+                            base_model_continuation,
+                            batch["target_label"],
+                            target_rewards,
+                            accuracy,
+                        ):
+                            csv_writer.writerow(
+                                [
+                                    epoch,
+                                    batch_num,
+                                    prefix,
+                                    prompt,
+                                    base_model.config.model_type,
+                                    continuation,
+                                    target,
+                                    reward.item(),
+                                    correct.item(),
+                                ]
+                            )
+
+                    # Flush the CSV file to ensure data is written
+                    csvfile.flush()
+
+            logger.info(f"Detailed logs saved to {log_file}")
+            return policy_model
 
     except Exception as e:
         logger.error(f"Training failed: {str(e)}")
@@ -241,10 +302,12 @@ def compute_reward(
     mean_perplexity = perplexity(prompts, continuation, base_models, tokenizers)
     diversity = distinctness(continuation)
     scores = compute_scores(
-        prompts, continuation, base_models, reward_models, tokenizers
+        prompts,
+        continuation,
+        base_models,
+        reward_models,
     )
-    rewards = F.softmax(scores, dim=-1)
-    return rewards, mean_perplexity, diversity
+    return scores, mean_perplexity, diversity, continuation
 
 
 def generate_continuation(
@@ -306,7 +369,6 @@ def compute_scores(
     continuation: List[List[torch.LongTensor]],
     base_models: List[AutoModelForCausalLM],
     reward_models: List[RewardModel],
-    tokenizers: List[AutoTokenizer],
 ) -> List[List[float]]:
     """
     Computes a score from each (prompt, continuation) pair for each reward model.
@@ -325,10 +387,9 @@ def compute_scores(
         List[float]: A list (batch size) of scores.
     """
     # (num base models * batch size)
-    # TODO: use prompts instead
     prompt_continuations = []
     # For base models
-    for base_model_continuations, tokenizer in zip(continuation, tokenizers):
+    for base_model_continuations in continuation:
         for prompt, continuation in zip(prompts, base_model_continuations):
             prompt_continuation = prompt + continuation
             prompt_continuations.append(prompt_continuation)
@@ -457,7 +518,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
-
+    # Set seed
+    seed = 0
+    torch.manual_seed(seed)
     # Initialize variables
     config = TrainingConfig()
     policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(config.model_name)

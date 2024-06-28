@@ -10,6 +10,7 @@ tags
 datasets/
 test_results/
 rlhf/constants.py
+local_logs/
 
 #
 # Byte-compiled / optimized / DLL files
