@@ -1,11 +1,10 @@
 import argparse
-import os
 import csv
+import os
 import traceback
 from dataclasses import asdict, dataclass
-from logging import Logger
 from datetime import datetime
-
+from logging import Logger
 from typing import Dict, List, Optional
 
 import torch
@@ -531,7 +530,7 @@ if __name__ == "__main__":
     for t in base_model_tokenizers:
         t.pad_token = t.eos_token
     train_dataset = load_from_disk(
-        os.environ.get("DATASETS_PATH") + "imdb_sst2_tokenized"
+        os.environ.get("DATASETS_PATH") + "imdb_sst2_tokenized_balanced"
     )
     if args.debug:
         debug_batch_size = 8
