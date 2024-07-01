@@ -35,6 +35,7 @@ class TrainingConfig:
     prefix_length: int = 15
     continuation_length: int = 20
     continuation_max_str_length: int = 400
+    dataset: str = "imdb_sst2_tokenized_balanced"
 
 
 def train(
@@ -529,9 +530,7 @@ if __name__ == "__main__":
     ]
     for t in base_model_tokenizers:
         t.pad_token = t.eos_token
-    train_dataset = load_from_disk(
-        os.environ.get("DATASETS_PATH") + "imdb_sst2_tokenized_balanced"
-    )
+    train_dataset = load_from_disk(os.environ.get("DATASETS_PATH") + config.dataset)
     if args.debug:
         debug_batch_size = 8
         train_dataset = train_dataset.select(range(debug_batch_size * 2))
