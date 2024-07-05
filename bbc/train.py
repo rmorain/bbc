@@ -2,7 +2,7 @@ import argparse
 import csv
 import os
 import traceback
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
 from logging import Logger
 from typing import Dict, List, Optional
@@ -13,7 +13,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
 from utils import collator
 
-import wandb
 from datasets import Dataset, load_from_disk
 
 
@@ -36,6 +35,7 @@ class TrainingConfig:
     continuation_length: int = 20
     continuation_max_str_length: int = 400
     dataset: str = "imdb_sst2_tokenized_balanced"
+    project_name: str = "bbc"
 
 
 def train(
@@ -96,7 +96,6 @@ def train(
             # Pre-training setup
             ppo_trainer = prepare_ppo_trainer(policy_model, train_dataset, config)
             base_models = ppo_trainer.accelerator.prepare(base_models)
-            logger.info(base_models)
             reward_models = [
                 model.to(ppo_trainer.accelerator.device) for model in reward_models
             ]
@@ -182,6 +181,7 @@ def train(
                     csvfile.flush()
 
             logger.info(f"Detailed logs saved to {log_file}")
+
             return policy_model
 
     except Exception as e:
@@ -222,6 +222,7 @@ def prepare_ppo_trainer(
         init_kl_coef=config.init_kl_coef,
         entropy_coef=config.entropy_coef,
         remove_unused_columns=False,
+        tracker_project_name=config.project_name,
     )
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     tokenizer.pad_token = tokenizer.eos_token
@@ -536,14 +537,9 @@ if __name__ == "__main__":
         train_dataset = train_dataset.select(range(debug_batch_size * 2))
         config.batch_size = debug_batch_size
         config.mini_batch_size = debug_batch_size
+        config.project_name = "bbc-test"
     reward_model = SentimentRewardModel()
     logger = Logger(__name__)
-
-    wandb.require("core")
-    if args.debug:
-        run = wandb.init(project="bbc-test", config=asdict(config))
-    else:
-        run = wandb.init(project="bbc", config=asdict(config))
 
     policy_model = train(
         policy_model,

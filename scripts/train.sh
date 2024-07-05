@@ -17,11 +17,4 @@ wandb enabled
 
 export DATASETS_PATH="/home/rmorain2/bbc/datasets/"
 
-# Set a specific directory for wandb files (adjust the path as needed)
-export WANDB_DIR="/home/rmorain2/bbc/wandb"
-
-accelerate launch --config_file=/home/rmorain2/bbc/multi_gpu.yaml /home/rmorain2/bbc/bbc/train.py
-
-# After the job completes, print a reminder message
-echo "Job completed. Remember to sync wandb data from a node with internet access."
-echo "Run 'wandb sync $WANDB_DIR' to upload the results."
+accelerate launch --config_file=/home/rmorain2/bbc/multi_gpu.yaml --num_processes 8 /home/rmorain2/bbc/bbc/train.py 
