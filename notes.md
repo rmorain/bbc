@@ -17,3 +17,25 @@
 - Is it because I am not using seed 0?
 - Should I try to recreate results exactly? 
 - Maybe it just needs more time.
+
+# Evaluate
+- What should this look like?
+- Run test on a list of datasets
+- Produce a table
+- Is this experiment specific?
+    - Maybe
+    - Are there common elements?
+        - Test dataset
+        - Table
+        - Metrics
+            - Accuracy
+            - Perplexity
+            - Reward
+            - Diversity
+- For sentiment, I change the target. 
+    - Is this a new dataset?
+        - Yes
+        - Kinda
+        - In order to be general, you can just treat it like a new dataset, rather
+            than a change in target.
+        - This is kind of good because then I can isolate the testing better. 

@@ -5,10 +5,11 @@ import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from logging import Logger
-from typing import List, Optional
+from typing import List
 
-import pudb
+import wandb
 import torch
+from torch.utils.data import DataLoader
 from reward_models import RewardModel, SentimentRewardModel
 from train import compute_reward, generate_prefix, prepare_ppo_trainer
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -19,7 +20,7 @@ from trl import AutoModelForCausalLMWithValueHead
 
 @dataclass
 class EvaluateConfig:
-    batch_size: int = 256
+    batch_size: int = 1
     learning_rate: float = 1.41e-6
     model_name: str = "gpt2"
     log_with: str = "wandb"
@@ -28,13 +29,13 @@ class EvaluateConfig:
     use_score_norm: bool = True
     whiten_rewards: bool = True
     kl_penalty: str = "abs"
-    mini_batch_size: int = 32
+    mini_batch_size: int = 1
     init_kl_coef: float = 0.0
     entropy_coef: float = 1e-3
     prefix_length: int = 15
     continuation_length: int = 20
     continuation_max_str_length: int = 400
-    dataset: str = "test_total"
+    dataset: str = "sentiment_prompts/negative_prompts_pos"
     project_name: str = "bbc"
 
 
@@ -43,10 +44,10 @@ def evaluate(
     base_models: List[AutoModelForCausalLM],
     tokenizers: List[AutoTokenizer],
     reward_models: List[RewardModel],
-    test_dataset: Dataset,
+    test_datasets: List[Dataset],
     logger: Logger,
     config: EvaluateConfig,
-) -> Optional[AutoModelForCausalLMWithValueHead]:
+) -> None:
     """
     Train the policy model to control a set of base models using the given reward models
         and training dataset.
@@ -57,17 +58,15 @@ def evaluate(
         tokenizers (List[AutoTokenizer]): A list of tokenizers corresponding to each
             base model.
         reward_model (List[RewardModel]): The reward model used for training.
-        test_dataset (Dataset): The evaluation dataset.
+        test_datasets (List[Dataset]): An evaluation dataset.
         logger (Logger): The logger instance for logging.
         config (TrainingConfig): The configuration object containing hyperparameters.
 
     Returns:
-        Optional[AutoModelForCausalLMWithValueHead]: The trained policy model, or None
-            if training failed.
+        None
     """
     try:
         # Create a directory for logs if it doesn't exist
-        pu.db
         log_dir = os.path.join(os.getcwd(), "local_logs")
         os.makedirs(log_dir, exist_ok=True)
 
@@ -82,6 +81,7 @@ def evaluate(
             # Write the header
             csv_writer.writerow(
                 [
+                    "Dataset",
                     "Batch",
                     "Prefix",
                     "Prompt",
@@ -94,95 +94,124 @@ def evaluate(
             )
 
             # Pre-training setup
-            ppo_trainer = prepare_ppo_trainer(policy_model, test_dataset, config)
+            ppo_trainer = prepare_ppo_trainer(policy_model, test_datasets[0], config)
             base_models = ppo_trainer.accelerator.prepare(base_models)
             reward_models = [
                 model.to(ppo_trainer.accelerator.device) for model in reward_models
             ]
 
-            # Test loop
-            for batch_num, batch in enumerate(ppo_trainer.dataloader):
-                prefixes = generate_prefix(batch, ppo_trainer, config)
-                prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
-                prefix_prompt = [
-                    prefix + prompt for prefix, prompt in zip(prefixes, prompts)
+            test_table = wandb.Table(
+                columns=[
+                    "Dataset",
+                    "Reward",
+                    "Accuracy",
+                    "Perplexity",
+                    "Unigram",
+                    "Bigram",
+                    "Trigram",
                 ]
-                rewards, perplexity, diversity, continuations = compute_reward(
-                    prompts,
-                    prefix_prompt,
-                    base_models,
-                    tokenizers,
-                    reward_models,
-                    config,
-                )
-                targets = torch.tensor(batch["target"])
-                accuracy = (rewards.argmax(-1) == targets).long()
-                target_rewards = torch.gather(rewards, 1, targets.unsqueeze(1))
-                target_rewards = [r for r in target_rewards]
+            )
 
-                prefix_prompt_ids = ppo_trainer.tokenizer(prefix_prompt).input_ids
-                prefix_prompt_ids = [torch.tensor(ids) for ids in prefix_prompt_ids]
-                stats = {}
-                stats["env/accuracy"] = (
-                    torch.mean(accuracy.float()).cpu().numpy().item()
+            for test_dataset in test_datasets:
+                dataloader = DataLoader(
+                    test_dataset,
+                    batch_size=config.batch_size,
+                    shuffle=False,
+                    collate_fn=collator,
                 )
-                stats["env/perplexity"] = perplexity
-                stats["env/distinctness-unigram"] = diversity[0]
-                stats["env/distinctness-bigram"] = diversity[1]
-                stats["env/distinctness-trigram"] = diversity[2]
+                reward_list = []
+                accuracy_list = []
+                perplexity_list = []
+                unigram_list = []
+                bigram_list = []
+                trigram_list = []
 
-                batch["prefix"] = prefixes
-                batch["prompt"] = prompts
-                ppo_trainer.log_stats(
-                    stats,
-                    batch,
-                    target_rewards,
-                    columns_to_log=[],
-                )
-                # Write detailed logs to CSV
-                for base_model_continuation, base_model in zip(
-                    continuations, base_models
-                ):
-                    for (
-                        prefix,
-                        prompt,
-                        continuation,
-                        target,
-                        reward,
-                        correct,
-                    ) in zip(
-                        prefixes,
+                # Test loop
+                for batch_num, batch in enumerate(dataloader):
+                    prefixes = generate_prefix(batch, ppo_trainer, config)
+                    prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
+                    prefix_prompt = [
+                        prefix + prompt for prefix, prompt in zip(prefixes, prompts)
+                    ]
+                    rewards, perplexity, diversity, continuations = compute_reward(
                         prompts,
-                        base_model_continuation,
-                        batch["target_label"],
-                        target_rewards,
-                        accuracy,
+                        prefix_prompt,
+                        base_models,
+                        tokenizers,
+                        reward_models,
+                        config,
+                    )
+                    targets = torch.tensor(batch["target"])
+                    accuracy = (rewards.argmax(-1) == targets).long()
+                    target_rewards = torch.gather(rewards, 1, targets.unsqueeze(1))
+                    target_rewards = [r for r in target_rewards]
+                    reward_list.append(target_rewards[0].item())
+                    accuracy_list.append(accuracy[0].item())
+                    perplexity_list.append(perplexity)
+                    unigram_list.append(diversity[0])
+                    bigram_list.append(diversity[1])
+                    trigram_list.append(diversity[2])
+
+                    # Write detailed logs to CSV
+                    for base_model_continuation, base_model in zip(
+                        continuations, base_models
                     ):
-                        csv_writer.writerow(
-                            [
-                                batch_num,
-                                prefix,
-                                prompt,
-                                base_model.config.model_type,
-                                continuation,
-                                target,
-                                reward.item(),
-                                correct.item(),
-                            ]
-                        )
+                        for (
+                            prefix,
+                            prompt,
+                            continuation,
+                            target,
+                            reward,
+                            correct,
+                        ) in zip(
+                            prefixes,
+                            prompts,
+                            base_model_continuation,
+                            batch["target_label"],
+                            target_rewards,
+                            accuracy,
+                        ):
+                            csv_writer.writerow(
+                                [
+                                    test_dataset.info.dataset_name,
+                                    batch_num,
+                                    prefix,
+                                    prompt,
+                                    base_model.config.model_type,
+                                    continuation,
+                                    target,
+                                    reward.item(),
+                                    correct.item(),
+                                ]
+                            )
 
-                # Flush the CSV file to ensure data is written
-                csvfile.flush()
+                    # Flush the CSV file to ensure data is written
+                    csvfile.flush()
 
+                test_table.add_data(
+                    test_dataset.info.dataset_name,
+                    sum(reward_list) / len(reward_list),
+                    sum(accuracy_list) / len(accuracy_list),
+                    sum(perplexity_list) / len(perplexity_list),
+                    sum(unigram_list) / len(unigram_list),
+                    sum(bigram_list) / len(bigram_list),
+                    sum(trigram_list) / len(trigram_list),
+                )
+
+            wandb.log({"Results": test_table})
             logger.info(f"Detailed logs saved to {log_file}")
 
-            return policy_model
+            return None
 
     except Exception as e:
-        logger.error(f"Training failed: {str(e)}")
+        logger.error(f"Evaluation failed: {str(e)}")
         logger.error(traceback.format_exc())
 
         return None
+
+
+def collator(data):
+    return dict((key, [d[key] for d in data]) for key in data[0])
 
 
 if __name__ == "__main__":
@@ -202,22 +231,38 @@ if __name__ == "__main__":
     ]
     for t in base_model_tokenizers:
         t.pad_token = t.eos_token
-    test_dataset = load_from_disk(os.environ.get("DATASETS_PATH") + config.dataset)
+    test_file_names = os.listdir(os.environ.get("DATASETS_PATH") + "sentiment_prompts")
+
     if args.debug:
-        debug_batch_size = 8
-        test_dataset = test_dataset.select(range(debug_batch_size * 2))
-        config.batch_size = debug_batch_size
-        config.mini_batch_size = debug_batch_size
+        test_datasets = []
+        for file_name in test_file_names:
+            ds = load_from_disk(
+                os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
+            ).select(range(2))
+            test_datasets.append(ds)
+        # test_datasets = [
+        #     load_from_disk(
+        #         os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
+        #     ).select(range(config.batch_size * 2))
+        #     for file_name in test_file_names
+        # ]
         config.project_name = "bbc-test"
+    else:
+        test_datasets = [
+            load_from_disk(
+                os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
+            )
+            for file_name in test_file_names
+        ]
     reward_model = SentimentRewardModel()
     logger = Logger(__name__)
 
-    policy_model = evaluate(
+    evaluate(
         policy_model,
         [base_model],
         base_model_tokenizers,
         [reward_model],
-        test_dataset,
+        test_datasets,
         logger,
         config,
     )

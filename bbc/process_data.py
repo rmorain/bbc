@@ -3,11 +3,10 @@ import sys
 
 import jsonlines
 import numpy as np
-import pudb
 import torch
 from transformers import AutoTokenizer
 
-from datasets import Dataset
+from datasets import Dataset, DatasetInfo
 
 
 class Senti_Prompt_Data(Dataset):
@@ -19,7 +18,6 @@ class Senti_Prompt_Data(Dataset):
         emotions=["negative", "positive"],
         target=None,
     ):
-        super(Senti_Prompt_Data, self).__init__()
         self.emotions = emotions
         self.tokenizer = tokenizer
         np.set_printoptions(threshold=sys.maxsize)
@@ -55,6 +53,7 @@ class Senti_Prompt_Data(Dataset):
                         "query": torch.tensor(target_label + context, dtype=torch.long),
                         "prompt": torch.tensor(context, dtype=torch.long),
                         "target": target,
+                        "target_label": self.emotions[target],
                     }
                 )
 
@@ -68,7 +67,29 @@ class Senti_Prompt_Data(Dataset):
 
 tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
-pu.db
-neg_ds = Senti_Prompt_Data(
-    os.environ.get("DATASETS_PATH") + "test/negative_prompts.jsonl", tokenizer
-)
+file_names = ["negative_prompts", "neutral_prompts", "positive_prompts"]
+targets = [0, 1]
+target_labels = ["neg", "pos"]
+for file_name in file_names:
+    for target in targets:
+        ds = Senti_Prompt_Data(
+            os.environ.get("DATASETS_PATH") + "test/" + file_name + ".jsonl",
+            tokenizer,
+            target=target,
+        )
+        ds_dict = {}
+        ds_dict["query"] = [x["query"] for x in ds.record]
+        ds_dict["target"] = [x["target"] for x in ds.record]
+        ds_dict["prompt"] = [x["prompt"] for x in ds.record]
+        ds_dict["target_label"] = [x["target_label"] for x in ds.record]
+
+        ds_info = DatasetInfo(dataset_name=file_name + f"_{target_labels[target]}")
+
+        dataset = Dataset.from_dict(ds_dict, info=ds_info)
+        dataset.set_format("torch")
+        dataset.save_to_disk(
+            os.environ.get("DATASETS_PATH")
+            + "sentiment_prompts/"
+            + file_name
+            + f"_{target_labels[target]}"
+        )
