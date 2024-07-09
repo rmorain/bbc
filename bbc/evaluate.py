@@ -2,10 +2,10 @@ import argparse
 import csv
 import os
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from logging import Logger
-from typing import List
+from typing import List, Dict
 
 import wandb
 import torch
@@ -37,6 +37,7 @@ class EvaluateConfig:
     continuation_max_str_length: int = 400
     dataset: str = "sentiment_prompts/negative_prompts_pos"
     project_name: str = "bbc"
+    tracker_kwargs: Dict = field(default_factory=dict)
 
 
 def evaluate(
@@ -218,12 +219,16 @@ if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--run_id", type=str, help="WandB Run ID from training")
     args = parser.parse_args()
     # Set seed
     seed = 0
     torch.manual_seed(seed)
     # Initialize variables
     config = EvaluateConfig()
+    config.tracker_kwargs = {
+        "wandb": {"resume": "must", "id": os.environ.get("WANDB_RUN_ID")}
+    }
     policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(config.model_name)
     base_model = AutoModelForCausalLM.from_pretrained(config.model_name)
     base_model_tokenizers = [
@@ -240,12 +245,6 @@ if __name__ == "__main__":
                 os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
             ).select(range(2))
             test_datasets.append(ds)
-        # test_datasets = [
-        #     load_from_disk(
-        #         os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
-        #     ).select(range(config.batch_size * 2))
-        #     for file_name in test_file_names
-        # ]
         config.project_name = "bbc-test"
     else:
         test_datasets = [

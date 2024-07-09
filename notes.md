@@ -39,3 +39,11 @@
         - In order to be general, you can just treat it like a new dataset, rather
             than a change in target.
         - This is kind of good because then I can isolate the testing better. 
+
+# Train and evaluate
+- Can I train using `train.py` and then evaluate using `evaluate.py`?
+- Should I use the same `accelerator` object?
+    - Pass in `ppo_trainer`
+- Should I want to train and evaluate in the same job?
+
+# Config via terminal flags

@@ -1,11 +1,13 @@
 import argparse
 import csv
 import os
+import pudb
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from logging import Logger
 from typing import Dict, List, Optional
+from evaluate import evaluate
 
 import torch
 from reward_models import RewardModel, SentimentRewardModel
@@ -36,6 +38,7 @@ class TrainingConfig:
     continuation_max_str_length: int = 400
     dataset: str = "imdb_sst2_tokenized_balanced"
     project_name: str = "bbc"
+    tracker_kwargs: Dict = field(default_factory=dict)
 
 
 def train(
@@ -223,6 +226,7 @@ def prepare_ppo_trainer(
         entropy_coef=config.entropy_coef,
         remove_unused_columns=False,
         tracker_project_name=config.project_name,
+        tracker_kwargs=config.tracker_kwargs,
     )
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     tokenizer.pad_token = tokenizer.eos_token
@@ -549,4 +553,34 @@ if __name__ == "__main__":
         train_dataset,
         logger,
         config,
+    )
+
+    test_file_names = [
+        "positive_prompts_neg",
+        "neutral_prompts_neg",
+        "neutral_prompts_pos",
+        "negative_prompts_pos",
+    ]
+    if args.debug:
+        test_datasets = []
+        for file_name in test_file_names:
+            ds = load_from_disk(
+                os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
+            ).select(range(2))
+            test_datasets.append(ds)
+        config.project_name = "bbc-test"
+    else:
+        test_datasets = [
+            load_from_disk(
+                os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
+            )
+            for file_name in test_file_names
+        ]
+
+    evaluate(
+        policy_model,
+        [base_model],
+        base_model_tokenizers,
+        [reward_model],
+        test_datasets,
     )
