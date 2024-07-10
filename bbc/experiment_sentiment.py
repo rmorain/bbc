@@ -52,12 +52,10 @@ ppo_trainer = train(
 )
 
 # Save policy model
-# Create a directory for saved models if it doesn't exist
-save_dir = os.path.join(os.getcwd(), "saved_models")
-os.makedirs(save_dir, exist_ok=True)
-
-# Create a unique model dir name
-if args.debug:
+if not args.debug:
+    # Create a directory for saved models if it doesn't exist
+    save_dir = os.path.join(os.getcwd(), "saved_models")
+    os.makedirs(save_dir, exist_ok=True)
     run_id = ppo_trainer.accelerator.get_tracker("wandb").run._run_id
     model_dir = os.path.join(save_dir, f"{train_config.model_name}_{run_id}")
     policy_model.save_pretrained(model_dir)
