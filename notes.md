@@ -47,3 +47,7 @@
 - Should I want to train and evaluate in the same job?
 
 # Config via terminal flags
+
+# Run sentiment control experiment fully
+- Test evaluation with multiple GPUs
+    - Should work?
