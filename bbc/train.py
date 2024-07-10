@@ -1,13 +1,11 @@
 import argparse
 import csv
 import os
-import pudb
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from logging import Logger
 from typing import Dict, List, Optional
-from evaluate import evaluate
 
 import torch
 from reward_models import RewardModel, SentimentRewardModel
@@ -42,31 +40,31 @@ class TrainingConfig:
 
 
 def train(
-    policy_model: AutoModelForCausalLMWithValueHead,
+    ppo_trainer: PPOTrainer,
     base_models: List[AutoModelForCausalLM],
     tokenizers: List[AutoTokenizer],
     reward_models: List[RewardModel],
-    train_dataset: Dataset,
     logger: Logger,
     config: TrainingConfig,
-) -> Optional[AutoModelForCausalLMWithValueHead]:
+) -> Optional[PPOTrainer]:
     """
     Train the policy model to control a set of base models using the given reward models
         and training dataset.
 
     Args:
+        ppo_trainer (PPOTrainer): Used for logging, prefix generation, and updating the
+            policy model.
         policy_model (AutoModelForCausalLMWithValueHead): The model to be trained.
         base_models (List[AutoModelForCausalLM]): Models to be controlled.
         tokenizers (List[AutoTokenizer]): A list of tokenizers corresponding to each
             base model.
         reward_model (List[RewardModel]): The reward model used for training.
-        train_dataset (Dataset): The training dataset.
         logger (Logger): The logger instance for logging.
         config (TrainingConfig): The configuration object containing hyperparameters.
 
     Returns:
-        Optional[AutoModelForCausalLMWithValueHead]: The trained policy model, or None
-            if training failed.
+        Optional[PPOTrainer]: The PPOTrainer object that contains the policy model, or
+            None if training failed.
     """
     try:
         # Create a directory for logs if it doesn't exist
@@ -97,7 +95,6 @@ def train(
             )
 
             # Pre-training setup
-            ppo_trainer = prepare_ppo_trainer(policy_model, train_dataset, config)
             base_models = ppo_trainer.accelerator.prepare(base_models)
             reward_models = [
                 model.to(ppo_trainer.accelerator.device) for model in reward_models
@@ -185,7 +182,7 @@ def train(
 
             logger.info(f"Detailed logs saved to {log_file}")
 
-            return policy_model
+            return ppo_trainer
 
     except Exception as e:
         logger.error(f"Training failed: {str(e)}")
@@ -545,42 +542,14 @@ if __name__ == "__main__":
     reward_model = SentimentRewardModel()
     logger = Logger(__name__)
 
-    policy_model = train(
+    ppo_trainer = prepare_ppo_trainer(policy_model, train_dataset, config)
+
+    ppo_trainer = train(
+        ppo_trainer,
         policy_model,
         [base_model],
         base_model_tokenizers,
         [reward_model],
-        train_dataset,
         logger,
         config,
-    )
-
-    test_file_names = [
-        "positive_prompts_neg",
-        "neutral_prompts_neg",
-        "neutral_prompts_pos",
-        "negative_prompts_pos",
-    ]
-    if args.debug:
-        test_datasets = []
-        for file_name in test_file_names:
-            ds = load_from_disk(
-                os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
-            ).select(range(2))
-            test_datasets.append(ds)
-        config.project_name = "bbc-test"
-    else:
-        test_datasets = [
-            load_from_disk(
-                os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
-            )
-            for file_name in test_file_names
-        ]
-
-    evaluate(
-        policy_model,
-        [base_model],
-        base_model_tokenizers,
-        [reward_model],
-        test_datasets,
     )

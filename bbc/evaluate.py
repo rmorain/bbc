@@ -5,17 +5,17 @@ import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from logging import Logger
-from typing import List, Dict
+from typing import Dict, List
 
-import wandb
 import torch
-from torch.utils.data import DataLoader
 from reward_models import RewardModel, SentimentRewardModel
+from torch.utils.data import DataLoader
 from train import compute_reward, generate_prefix, prepare_ppo_trainer
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from trl import AutoModelForCausalLMWithValueHead, PPOTrainer
 
+import wandb
 from datasets import Dataset, load_from_disk
-from trl import AutoModelForCausalLMWithValueHead
 
 
 @dataclass
@@ -41,7 +41,7 @@ class EvaluateConfig:
 
 
 def evaluate(
-    policy_model: AutoModelForCausalLMWithValueHead,
+    ppo_trainer: PPOTrainer,
     base_models: List[AutoModelForCausalLM],
     tokenizers: List[AutoTokenizer],
     reward_models: List[RewardModel],
@@ -54,7 +54,7 @@ def evaluate(
         and training dataset.
 
     Args:
-        policy_model (AutoModelForCausalLMWithValueHead): The model to be trained.
+        ppo_trainer (PPOTrainer): Used for logging and prefix generation.
         base_models (List[AutoModelForCausalLM]): Models to be controlled.
         tokenizers (List[AutoTokenizer]): A list of tokenizers corresponding to each
             base model.
@@ -95,7 +95,6 @@ def evaluate(
             )
 
             # Pre-training setup
-            ppo_trainer = prepare_ppo_trainer(policy_model, test_datasets[0], config)
             base_models = ppo_trainer.accelerator.prepare(base_models)
             reward_models = [
                 model.to(ppo_trainer.accelerator.device) for model in reward_models
@@ -199,7 +198,7 @@ def evaluate(
                     sum(trigram_list) / len(trigram_list),
                 )
 
-            wandb.log({"Results": test_table})
+            wandb.log({"Evaluation results": test_table})
             logger.info(f"Detailed logs saved to {log_file}")
 
             return None
@@ -226,9 +225,6 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
     # Initialize variables
     config = EvaluateConfig()
-    config.tracker_kwargs = {
-        "wandb": {"resume": "must", "id": os.environ.get("WANDB_RUN_ID")}
-    }
     policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(config.model_name)
     base_model = AutoModelForCausalLM.from_pretrained(config.model_name)
     base_model_tokenizers = [
@@ -255,8 +251,10 @@ if __name__ == "__main__":
         ]
     reward_model = SentimentRewardModel()
     logger = Logger(__name__)
+    ppo_trainer = prepare_ppo_trainer(policy_model, test_datasets[0], config)
 
     evaluate(
+        ppo_trainer,
         policy_model,
         [base_model],
         base_model_tokenizers,
