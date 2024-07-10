@@ -38,6 +38,22 @@ class EvaluateConfig:
     dataset: str = "sentiment_prompts/negative_prompts_pos"
     project_name: str = "bbc"
     tracker_kwargs: Dict = field(default_factory=dict)
+    prefix_gen_kwargs: Dict = field(
+        default_factory=lambda: {
+            "min_length": -1,
+            "top_p": 1.0,
+            "do_sample": True,
+            "output_scores": True,
+        }
+    )
+    continuation_gen_kwargs: Dict = field(
+        default_factory=lambda: {
+            "min_length": -1,
+            "top_p": 0.9,
+            "do_sample": True,
+            "output_scores": True,
+        }
+    )
 
 
 def evaluate(
@@ -198,7 +214,7 @@ def evaluate(
                     sum(trigram_list) / len(trigram_list),
                 )
 
-            wandb.log({"Evaluation results": test_table})
+            ppo_trainer.accelerator.log({"Evaluation results": test_table})
             logger.info(f"Detailed logs saved to {log_file}")
 
             return None

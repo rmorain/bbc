@@ -37,6 +37,22 @@ class TrainingConfig:
     dataset: str = "imdb_sst2_tokenized_balanced"
     project_name: str = "bbc"
     tracker_kwargs: Dict = field(default_factory=dict)
+    prefix_gen_kwargs: Dict = field(
+        default_factory=lambda: {
+            "min_length": -1,
+            "top_p": 1.0,
+            "do_sample": True,
+            "output_scores": True,
+        }
+    )
+    continuation_gen_kwargs: Dict = field(
+        default_factory=lambda: {
+            "min_length": -1,
+            "top_p": 1.0,
+            "do_sample": False,
+            "output_scores": True,
+        }
+    )
 
 
 def train(
@@ -241,13 +257,6 @@ def generate_prefix(
     batch: Dict,
     ppo_trainer: PPOTrainer,
     config: TrainingConfig,
-    gen_kwargs: Optional[Dict] = {
-        "min_length": -1,
-        "top_k": 0.0,
-        "top_p": 1.0,
-        "do_sample": True,
-        "output_scores": True,
-    },
 ) -> List[torch.LongTensor]:
     """
     Generate a prefix for each element of the batch.
@@ -256,11 +265,11 @@ def generate_prefix(
         batch (Dict): Batch of data.
         ppo_trainer (PPOTrainer): `PPOTrainer` object from the `trl` library.
         config (TrainingConfig): The configuration object containing hyperparameters.
-        gen_kwargs (Optional[Dict]): Generation keyword arguments
 
     Returns:
         List[torch.LongTensor]: A list (batch size) of tensors containing prefix tokens.
     """
+    gen_kwargs = config.prefix_gen_kwargs
     query_prefix = ppo_trainer.generate(
         batch["query"],
         max_new_tokens=config.prefix_length,
@@ -317,12 +326,6 @@ def generate_continuation(
     base_models: List[AutoModelForCausalLM],
     tokenizers: List[AutoTokenizer],
     config: TrainingConfig,
-    gen_kwargs: Optional[Dict] = {
-        "min_length": -1,
-        "top_p": 1.0,
-        "do_sample": False,
-        "output_scores": True,
-    },
 ) -> List[List[str]]:
     """
     Generates a continuation from a (prefix, prompt) pair for each base model.
@@ -335,12 +338,12 @@ def generate_continuation(
         tokenizers (List[AutoTokenizer]): A list of tokenizers corresponding to each
             base model.
         config (TrainingConfig): The configuration object containing hyperparameters.
-        gen_kwargs (Optional[Dict]): Generation keyword arguments
 
     Returns:
         List[List[str]]: A list (len(base_models)) of lists (batch size) of
             continuation strings.
     """
+    gen_kwargs = config.continuation_gen_kwargs
     continuations = []
     with torch.no_grad():
         for model, tokenizer in zip(base_models, tokenizers):

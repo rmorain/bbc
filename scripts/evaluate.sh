@@ -1,8 +1,7 @@
 #!/bin/bash
 
-NUM_GPUS=1
 
-#SBATCH --time=23:59:59   # walltime
+#SBATCH --time=00:59:59   # walltime
 #SBATCH --ntasks=$NUM_GPUS   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
 #SBATCH --gpus=$NUM_GPUS

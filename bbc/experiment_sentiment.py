@@ -19,7 +19,7 @@ args = parser.parse_args()
 seed = 0
 torch.manual_seed(seed)
 # Initialize variables
-train_config = TrainingConfig()
+train_config = TrainingConfig(num_epochs=5)
 policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
     train_config.model_name
 )
@@ -40,6 +40,9 @@ reward_model = SentimentRewardModel()
 logger = Logger(__name__)
 
 ppo_trainer = prepare_ppo_trainer(policy_model, train_dataset, train_config)
+ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
+    {"train_config": train_config}
+)
 
 # Train policy model
 ppo_trainer = train(
@@ -63,6 +66,9 @@ if not args.debug:
 # Initialize evaluation variables
 eval_config = EvaluateConfig()
 
+ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
+    {"eval_config": eval_config}
+)
 test_file_names = [
     "positive_prompts_neg",
     "neutral_prompts_neg",
