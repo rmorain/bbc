@@ -20,4 +20,4 @@ export DATASETS_PATH="/home/rmorain2/bbc/datasets/"
 accelerate launch \
     --config_file=/home/rmorain2/bbc/multi_gpu.yaml \
     --num_processes 8 \
-    /home/rmorain2/bbc/bbc/experiment_sentiment.py
+    /home/rmorain2/bbc/bbc/experiment_sentiment.py --debug
