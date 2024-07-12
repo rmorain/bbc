@@ -51,3 +51,6 @@
 # Run sentiment control experiment fully
 - Test evaluation with multiple GPUs
     - Should work?
+
+# Add confidence
+- Need to add confidence to the metrics

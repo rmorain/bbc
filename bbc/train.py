@@ -7,6 +7,7 @@ from datetime import datetime
 from logging import Logger
 from typing import Dict, List, Optional
 
+import pudb
 import torch
 from reward_models import RewardModel, SentimentRewardModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -21,7 +22,8 @@ class TrainingConfig:
     num_epochs: int = 1
     batch_size: int = 256
     learning_rate: float = 1.41e-6
-    model_name: str = "gpt2"
+    policy_model: str = "gpt2"
+    base_models: List[str] = field(default_factory=lambda: ["gpt2"])
     log_with: str = "wandb"
     ratio_threshold: float = 5.0
     use_score_scaling: bool = True
@@ -225,7 +227,7 @@ def prepare_ppo_trainer(
         PPOTrainer: The object that updates the policy model
     """
     ppo_config = PPOConfig(
-        model_name=config.model_name,
+        model_name=config.policy_model,
         learning_rate=config.learning_rate,
         batch_size=config.batch_size,
         log_with=config.log_with,
@@ -241,7 +243,7 @@ def prepare_ppo_trainer(
         tracker_project_name=config.project_name,
         tracker_kwargs=config.tracker_kwargs,
     )
-    tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(config.policy_model)
     tokenizer.pad_token = tokenizer.eos_token
     ppo_trainer = PPOTrainer(
         config=ppo_config,
@@ -528,10 +530,12 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
     # Initialize variables
     config = TrainingConfig()
-    policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(config.model_name)
-    base_model = AutoModelForCausalLM.from_pretrained(config.model_name)
+    policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
+        config.policy_model
+    )
+    base_model = AutoModelForCausalLM.from_pretrained(config.base_models[0])
     base_model_tokenizers = [
-        AutoTokenizer.from_pretrained(config.model_name, padding_side="left")
+        AutoTokenizer.from_pretrained(config.base_models[0], padding_side="left")
     ]
     for t in base_model_tokenizers:
         t.pad_token = t.eos_token

@@ -19,16 +19,18 @@ args = parser.parse_args()
 seed = 0
 torch.manual_seed(seed)
 # Initialize variables
-train_config = TrainingConfig(num_epochs=5)
+train_config = TrainingConfig(num_epochs=1, base_models=["gpt2", "gpt2-medium"])
 policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
-    train_config.model_name
+    train_config.policy_model
 )
-base_model = AutoModelForCausalLM.from_pretrained(train_config.model_name)
-base_model_tokenizers = [
-    AutoTokenizer.from_pretrained(train_config.model_name, padding_side="left")
-]
-for t in base_model_tokenizers:
-    t.pad_token = t.eos_token
+base_models = []
+base_model_tokenizers = []
+for base_model_name in train_config.base_models:
+    base_models.append(AutoModelForCausalLM.from_pretrained(base_model_name))
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name, padding_side="left")
+    tokenizer.pad_token = tokenizer.eos_token
+    base_model_tokenizers.append(tokenizer)
+
 train_dataset = load_from_disk(os.environ.get("DATASETS_PATH") + train_config.dataset)
 if args.debug:
     debug_batch_size = 8
@@ -47,7 +49,7 @@ ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
 # Train policy model
 ppo_trainer = train(
     ppo_trainer,
-    [base_model],
+    base_models,
     base_model_tokenizers,
     [reward_model],
     logger,
@@ -60,7 +62,7 @@ if not args.debug and ppo_trainer.accelerator.is_main_process:
     save_dir = os.path.join(os.getcwd(), "saved_models")
     os.makedirs(save_dir, exist_ok=True)
     run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
-    model_dir = os.path.join(save_dir, f"{train_config.model_name}_{run_id}")
+    model_dir = os.path.join(save_dir, f"{train_config.policy_model}_{run_id}")
     policy_model.save_pretrained(model_dir)
 
 # Initialize evaluation variables
@@ -94,7 +96,7 @@ else:
 # Evaluate policy model
 evaluate(
     ppo_trainer,
-    [base_model],
+    base_models,
     base_model_tokenizers,
     [reward_model],
     test_datasets,
