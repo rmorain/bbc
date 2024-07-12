@@ -1,5 +1,6 @@
 import argparse
 import csv
+import math
 import os
 import traceback
 from dataclasses import dataclass, field
@@ -7,8 +8,11 @@ from datetime import datetime
 from logging import Logger
 from typing import Dict, List
 
+import numpy as np
+import scipy.stats as stats
 import torch
 from reward_models import RewardModel, SentimentRewardModel
+from scipy.stats import binomtest
 from torch.utils.data import DataLoader
 from train import compute_reward, generate_prefix, prepare_ppo_trainer
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -204,14 +208,26 @@ def evaluate(
                     # Flush the CSV file to ensure data is written
                     csvfile.flush()
 
+                reward_mean = np.mean(reward_list)
+                reward_error = margin_of_error(reward_list)
+                accuracy_mean = np.mean(accuracy_list)
+                lo, hi = binomial_ci(accuracy_list)
+                perplexity_mean = np.mean(perplexity_list)
+                perplexity_error = margin_of_error(perplexity_list)
+                unigram_mean = np.mean(unigram_list)
+                unigram_error = margin_of_error(unigram_list)
+                bigram_mean = np.mean(bigram_list)
+                bigram_error = margin_of_error(bigram_list)
+                trigram_mean = np.mean(trigram_list)
+                trigram_error = margin_of_error(trigram_list)
                 test_table.add_data(
                     test_dataset.info.dataset_name,
-                    sum(reward_list) / len(reward_list),
-                    sum(accuracy_list) / len(accuracy_list),
-                    sum(perplexity_list) / len(perplexity_list),
-                    sum(unigram_list) / len(unigram_list),
-                    sum(bigram_list) / len(bigram_list),
-                    sum(trigram_list) / len(trigram_list),
+                    f"{reward_mean:.3f} +- {reward_error:.3f}",
+                    f"{accuracy_mean * 100:.3f}% ({lo * 100:.3f}, {hi * 100:.3f})",
+                    f"{perplexity_mean:.3f} +- {perplexity_error:.3f}",
+                    f"{unigram_mean:.3f} +- {unigram_error:.3f}",
+                    f"{bigram_mean:.3f} +- {bigram_error:.3f}",
+                    f"{trigram_mean:.3f} +- {trigram_error:.3f}",
                 )
 
             ppo_trainer.accelerator.log({"Evaluation results": test_table})
@@ -228,6 +244,21 @@ def evaluate(
 
 def collator(data):
     return dict((key, [d[key] for d in data]) for key in data[0])
+
+
+def binomial_ci(samples: List[bool]):
+    k = sum(samples)
+    n = len(samples)
+    result = binomtest(k, n)
+    low, high = result.proportion_ci()
+    return low, high
+
+
+def margin_of_error(samples, confidence=0.95):
+    se = stats.sem(samples)
+    z_value = stats.norm.ppf((1 + confidence) / 2)
+    margin = z_value * se
+    return margin
 
 
 if __name__ == "__main__":

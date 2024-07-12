@@ -54,3 +54,26 @@
 
 # Add confidence
 - Need to add confidence to the metrics
+- How to measure this?
+
+```python
+perplexities = test_df.loc[(test_df["target"] == 1)]["perplexity"]
+
+std = perplexities.std()
+
+p = perplexities.sum() / len(perplexities)
+z = 1.960  # 95% confidence interval
+
+margin_of_error = z * (std / math.sqrt(len(perplexities)))
+print(margin_of_error)
+```
+
+Given a list of values, 
+    1. compute the standard deviation of these values
+    2. Margin of error = z * std / sqrt(n)
+        - z is the confidence interval
+            - The mean is a certain value with CI probability
+        - Bigger the margin of error, the wider the range that the mean could be
+        - CI
+            - How often the interval would contain the true population parameter if the
+                experiment were conducted several times
