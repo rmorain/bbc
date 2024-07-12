@@ -19,7 +19,7 @@ args = parser.parse_args()
 seed = 0
 torch.manual_seed(seed)
 # Initialize variables
-train_config = TrainingConfig(num_epochs=1, base_models=["gpt2", "gpt2-medium"])
+train_config = TrainingConfig(num_epochs=5, base_models=["gpt2", "gpt2-medium"])
 policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
     train_config.policy_model
 )
