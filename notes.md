@@ -77,3 +77,21 @@ Given a list of values,
         - CI
             - How often the interval would contain the true population parameter if the
                 experiment were conducted several times
+
+# Add a wandb description
+- Describe what the run is for. What makes it special?
+
+# Identify differences
+- Unbalanced dataset
+- compute reward
+    - Only use continuation, not prompt
+- Scores/whitening/normalization
+- Num epochs
+    - Train longer?
+- GPT-2 large
+    - Base model
+
+# Decrease memory utilization by 50%
+- Only using 20%
+
+# Why is perplexity 0?
