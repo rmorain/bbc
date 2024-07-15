@@ -3,11 +3,9 @@ import csv
 import os
 import traceback
 from dataclasses import dataclass, field
-from datetime import datetime
 from logging import Logger
 from typing import Dict, List, Optional
 
-import pudb
 import torch
 from reward_models import RewardModel, SentimentRewardModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -88,10 +86,11 @@ def train(
         # Create a directory for logs if it doesn't exist
         log_dir = os.path.join(os.getcwd(), "local_logs")
         os.makedirs(log_dir, exist_ok=True)
-
+        log_dir = os.path.join(log_dir, "train")
+        os.makedirs(log_dir, exist_ok=True)
         # Create a unique log file name
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = os.path.join(log_dir, f"training_log_{timestamp}.csv")
+        run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
+        log_file = os.path.join(log_dir, f"training_log_{run_id}.csv")
 
         # Open the CSV file for writing
         with open(log_file, "w", newline="") as csvfile:
@@ -198,7 +197,7 @@ def train(
                     # Flush the CSV file to ensure data is written
                     csvfile.flush()
 
-            logger.info(f"Detailed logs saved to {log_file}")
+            logger.info(f"Detailed logs saved to {log_file}", main_process_only=True)
 
             return ppo_trainer
 

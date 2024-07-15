@@ -80,6 +80,7 @@ Given a list of values,
 
 # Add a wandb description
 - Describe what the run is for. What makes it special?
+- Done
 
 # Identify differences
 - Unbalanced dataset
@@ -90,6 +91,11 @@ Given a list of values,
     - Train longer?
 - GPT-2 large
     - Base model
+- Increase training context window
+    - Compute average context window length
+        Mean prompt length:  9.0476
+        STD of prompt length:  3.86177863684598
+        Range 5-13 tokens
 
 # Decrease memory utilization by 50%
 - Only using 20%

@@ -1,8 +1,8 @@
 import argparse
 import os
-from logging import Logger
 
 import torch
+from accelerate.logging import get_logger
 from evaluate import EvaluateConfig, evaluate
 from reward_models import SentimentRewardModel
 from train import TrainingConfig, prepare_ppo_trainer, train
@@ -18,8 +18,14 @@ args = parser.parse_args()
 # Set seed
 seed = 0
 torch.manual_seed(seed)
+# Add description
+description = "Test"
 # Initialize variables
-train_config = TrainingConfig(num_epochs=5, base_models=["gpt2", "gpt2-medium"])
+train_config = TrainingConfig(
+    num_epochs=5,
+    base_models=["gpt2", "gpt2-medium"],
+    tracker_kwargs={"wandb": {"notes": description}},
+)
 policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
     train_config.policy_model
 )
@@ -39,12 +45,13 @@ if args.debug:
     train_config.mini_batch_size = debug_batch_size
     train_config.project_name = "bbc-test"
 reward_model = SentimentRewardModel()
-logger = Logger(__name__)
 
 ppo_trainer = prepare_ppo_trainer(policy_model, train_dataset, train_config)
 ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
     {"train_config": train_config}
 )
+
+logger = get_logger(__name__)
 
 # Train policy model
 ppo_trainer = train(
@@ -64,6 +71,7 @@ if not args.debug and ppo_trainer.accelerator.is_main_process:
     run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
     model_dir = os.path.join(save_dir, f"{train_config.policy_model}_{run_id}")
     policy_model.save_pretrained(model_dir)
+    logger.info(f"Policy model saved at {model_dir}")
 
 # Initialize evaluation variables
 eval_config = EvaluateConfig()

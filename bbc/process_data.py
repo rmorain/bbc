@@ -1,95 +1,47 @@
 import os
-import sys
 
-import jsonlines
-import numpy as np
-import torch
+import pudb
 from transformers import AutoTokenizer
+from trl.core import LengthSampler
 
-from datasets import Dataset, DatasetInfo
-
-
-class Senti_Prompt_Data(Dataset):
-    def __init__(
-        self,
-        json_path,
-        tokenizer,
-        args=None,
-        emotions=["negative", "positive"],
-        target=None,
-    ):
-        self.emotions = emotions
-        self.tokenizer = tokenizer
-        np.set_printoptions(threshold=sys.maxsize)
-        self.args = args
-        self.target = target
-
-        self.record = []
-        self.read_content(json_path)
-
-    def read_content(self, json_path):
-        print("reading data from %s ..." % json_path)
-
-        with open(str(json_path), "r+", encoding="utf8") as f:
-            for item in jsonlines.Reader(f):
-                if self.target is not None:
-                    target = self.target
-                else:
-                    target = np.random.randint(len(self.emotions))
-                prompt = item["prompt"]["text"]
-
-                context = self.tokenizer(prompt.strip(), return_tensors="np")[
-                    "input_ids"
-                ][0].tolist()
-
-                if len(context) < 1:
-                    continue
-
-                target_label = self.tokenizer(
-                    f"Sentiment: {self.emotions[target]}. ", return_tensors="np"
-                )["input_ids"][0].tolist()
-                self.record.append(
-                    {
-                        "query": torch.tensor(target_label + context, dtype=torch.long),
-                        "prompt": torch.tensor(context, dtype=torch.long),
-                        "target": target,
-                        "target_label": self.emotions[target],
-                    }
-                )
-
-    def __len__(self):
-        return len(self.record)
-
-    def __getitem__(self, index):
-        item = self.record[index]
-        return item
+from datasets import load_from_disk
 
 
-tokenizer = AutoTokenizer.from_pretrained("gpt2")
+# TODO
+def process_data(dataset_name, tokenizer, input_min_text_length, input_max_text_length):
+    ds = load_from_disk(os.environ.get("DATASETS_PATH") + dataset_name)
+    pu.db
 
-file_names = ["negative_prompts", "neutral_prompts", "positive_prompts"]
-targets = [0, 1]
-target_labels = ["neg", "pos"]
-for file_name in file_names:
-    for target in targets:
-        ds = Senti_Prompt_Data(
-            os.environ.get("DATASETS_PATH") + "test/" + file_name + ".jsonl",
-            tokenizer,
-            target=target,
-        )
-        ds_dict = {}
-        ds_dict["query"] = [x["query"] for x in ds.record]
-        ds_dict["target"] = [x["target"] for x in ds.record]
-        ds_dict["prompt"] = [x["prompt"] for x in ds.record]
-        ds_dict["target_label"] = [x["target_label"] for x in ds.record]
+    ds = ds.filter(lambda x: len(x["review"]) > 200, batched=False)
 
-        ds_info = DatasetInfo(dataset_name=file_name + f"_{target_labels[target]}")
+    input_size = LengthSampler(input_min_text_length, input_max_text_length)
+    ds = ds.map(
+        tokenize,
+        batched=False,
+        fn_kwargs={"input_size": input_size, "tokenizer": tokenizer},
+    )
+    ds = ds.remove_columns(["review", "label"])
 
-        dataset = Dataset.from_dict(ds_dict, info=ds_info)
-        dataset.set_format("torch")
-        dataset.save_to_disk(
-            os.environ.get("DATASETS_PATH")
-            + "sentiment_prompts/"
-            + file_name
-            + f"_{target_labels[target]}"
-        )
+    ds.set_format(type="torch")
+    return ds
+
+
+def tokenize(sample, input_size=None, tokenizer=None):
+    if sample["label"] == 0:
+        sample["target"] = 1
+    else:
+        sample["target"] = 0
+    sample["target_label"] = emotions[sample["target"]]
+    input_size = input_size()
+    sample["prompt"] = tokenizer.encode(sample["review"])[:input_size]
+    sample["query"] = tokenizer.encode(
+        f"Sentiment: {emotions[sample['target']]}. {tokenizer.decode(sample['prompt'])}"
+    )
+    return sample
+
+
+if __name__ == "__main__":
+    dataset_name = "imdb_sst2"
+    model_name = "gpt2"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    ds = process_data(dataset_name, tokenizer)
