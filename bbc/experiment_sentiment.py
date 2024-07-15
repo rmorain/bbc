@@ -19,7 +19,7 @@ args = parser.parse_args()
 seed = 0
 torch.manual_seed(seed)
 # Add description
-description = "Test"
+description = "Testing with 2 base models."
 # Initialize variables
 train_config = TrainingConfig(
     num_epochs=5,

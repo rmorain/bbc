@@ -34,13 +34,13 @@ class TrainingConfig:
     prefix_length: int = 15
     continuation_length: int = 20
     continuation_max_str_length: int = 400
-    dataset: str = "imdb_sst2_tokenized_balanced"
+    dataset: str = "imdb_sst2_processed"
     project_name: str = "bbc"
     tracker_kwargs: Dict = field(default_factory=dict)
     prefix_gen_kwargs: Dict = field(
         default_factory=lambda: {
             "min_length": -1,
-            "top_p": 1.0,
+            "top_p": 0.9,
             "do_sample": True,
             "output_scores": True,
         }
@@ -48,8 +48,8 @@ class TrainingConfig:
     continuation_gen_kwargs: Dict = field(
         default_factory=lambda: {
             "min_length": -1,
-            "top_p": 1.0,
-            "do_sample": False,
+            "top_p": 0.9,
+            "do_sample": True,
             "output_scores": True,
         }
     )
