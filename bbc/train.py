@@ -1,6 +1,7 @@
 import argparse
 import csv
 import os
+import shutil
 import traceback
 from dataclasses import dataclass, field
 from logging import Logger
@@ -84,16 +85,18 @@ def train(
         Optional[PPOTrainer]: The PPOTrainer object that contains the policy model, or
             None if training failed.
     """
+
     try:
         # Create a directory for logs if it doesn't exist
         log_dir = os.path.join(os.getcwd(), "local_logs")
-        run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
         os.makedirs(log_dir, exist_ok=True)
-        log_dir = os.path.join(log_dir, run_id)
+        log_dir = os.path.join(log_dir, "temp")
+        if os.path.exists(log_dir):
+            shutil.rmtree(log_dir, ignore_errors=True)
         os.makedirs(log_dir, exist_ok=True)
         # Create a unique log file name
         process_index = ppo_trainer.accelerator.process_index
-        log_file = os.path.join(log_dir, f"training_log_{run_id}_{process_index}.csv")
+        log_file = os.path.join(log_dir, f"training_log_{process_index}.csv")
 
         # Open the CSV file for writing
         with open(log_file, "w", newline="") as csvfile:
@@ -205,7 +208,13 @@ def train(
 
                 import pandas as pd
 
-                all_files = glob.glob(os.path.join(log_dir, f"training_log_{run_id}*"))
+                run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
+                log_dir = os.path.join(os.getcwd(), "local_logs", run_id)
+                os.makedirs(log_dir, exist_ok=True)
+
+                all_files = glob.glob(
+                    os.path.join(os.getcwd(), "local_logs", "temp", "training_log_*")
+                )
                 combined_files = pd.concat([pd.read_csv(f) for f in all_files])
 
                 for f in all_files:

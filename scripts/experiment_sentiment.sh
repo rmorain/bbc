@@ -10,10 +10,7 @@
 #SBATCH --qos=cs
 #SBATCH --output=/home/rmorain2/bbc/logs/slurm-%j.out
 
-# Enable wandb in offline mode
-export WANDB_MODE=offline
-
-wandb enabled
+wandb offline
 
 export DATASETS_PATH="/home/rmorain2/bbc/datasets/"
 

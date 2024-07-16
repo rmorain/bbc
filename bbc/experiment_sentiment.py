@@ -22,7 +22,7 @@ torch.manual_seed(seed)
 description = "Testing with 2 base models."
 # Initialize variables
 train_config = TrainingConfig(
-    num_epochs=5,
+    num_epochs=1,
     base_models=["gpt2", "gpt2-medium"],
     tracker_kwargs={"wandb": {"notes": description}},
 )
@@ -52,6 +52,7 @@ ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
 )
 
 logger = get_logger(__name__)
+logger.critical("Test")
 
 # Train policy model
 ppo_trainer = train(
