@@ -52,6 +52,7 @@ ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
 )
 
 logger = get_logger(__name__)
+logger.info("Logging enabled!")
 
 # Train policy model
 ppo_trainer = train(

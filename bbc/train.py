@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 
 import torch
 from reward_models import RewardModel, SentimentRewardModel
+from torch.distributed.elastic.multiprocessing.errors import record
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
 from utils import collator
@@ -55,6 +56,7 @@ class TrainingConfig:
     )
 
 
+@record
 def train(
     ppo_trainer: PPOTrainer,
     base_models: List[AutoModelForCausalLM],
@@ -89,8 +91,9 @@ def train(
         log_dir = os.path.join(log_dir, "train")
         os.makedirs(log_dir, exist_ok=True)
         # Create a unique log file name
+        process_index = ppo_trainer.accelerator.process_index
         run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
-        log_file = os.path.join(log_dir, f"training_log_{run_id}.csv")
+        log_file = os.path.join(log_dir, f"training_log_{run_id}_{process_index}.csv")
 
         # Open the CSV file for writing
         with open(log_file, "w", newline="") as csvfile:
@@ -198,6 +201,15 @@ def train(
                     csvfile.flush()
 
             logger.info(f"Detailed logs saved to {log_file}", main_process_only=True)
+            if ppo_trainer.accelerator.is_main_process:
+                import glob
+
+                import pandas as pd
+
+                all_files = glob.glob(os.path.join(log_dir, f"training_log_{run_id}*"))
+                combined_files = pd.concat([pd.read_csv(f) for f in all_files])
+
+                combined_files.to_csv(f"training_log_{run_id}", index=False)
 
             return ppo_trainer
 

@@ -11,6 +11,7 @@ import scipy.stats as stats
 import torch
 from reward_models import RewardModel, SentimentRewardModel
 from scipy.stats import binomtest
+from torch.distributed.elastic.multiprocessing.errors import record
 from torch.utils.data import DataLoader
 from train import compute_reward, generate_prefix, prepare_ppo_trainer
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -58,6 +59,7 @@ class EvaluateConfig:
     )
 
 
+@record
 def evaluate(
     ppo_trainer: PPOTrainer,
     base_models: List[AutoModelForCausalLM],
@@ -92,8 +94,9 @@ def evaluate(
         os.makedirs(log_dir, exist_ok=True)
 
         # Create a unique log file name
+        process_id = ppo_trainer.accelerator.process_id
         run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
-        log_file = os.path.join(log_dir, f"eval_log_{run_id}.csv")
+        log_file = os.path.join(log_dir, f"eval_log_{run_id}_{process_id}.csv")
 
         # Open the CSV file for writing
         with open(log_file, "w", newline="") as csvfile:
@@ -232,6 +235,16 @@ def evaluate(
 
             ppo_trainer.accelerator.log({"Evaluation results": test_table})
             logger.info(f"Detailed logs saved to {log_file}", main_process_only=True)
+
+            if ppo_trainer.accelerator.is_main_process:
+                import glob
+
+                import pandas as pd
+
+                all_files = glob.glob(os.join(log_dir, f"eval_log_{run_id}*"))
+                combined_files = pd.concat([pd.read_csv(f) for f in all_files])
+
+                combined_files.to_csv(f"eval_log_{run_id}", index=False)
 
             return None
 
