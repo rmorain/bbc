@@ -52,7 +52,6 @@ ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
 )
 
 logger = get_logger(__name__)
-logger.info("Logging enabled!")
 
 # Train policy model
 ppo_trainer = train(
@@ -72,7 +71,7 @@ if not args.debug and ppo_trainer.accelerator.is_main_process:
     run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
     model_dir = os.path.join(save_dir, f"{train_config.policy_model}_{run_id}")
     policy_model.save_pretrained(model_dir)
-    logger.info(f"Policy model saved at {model_dir}")
+    print(f"Policy model saved at {model_dir}")
 
 # Initialize evaluation variables
 eval_config = EvaluateConfig()
