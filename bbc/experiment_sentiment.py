@@ -1,6 +1,5 @@
 import argparse
 import os
-import shutil
 
 import torch
 from accelerate.logging import get_logger
@@ -15,6 +14,11 @@ from datasets import load_from_disk
 # Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+parser.add_argument("--num_epochs", type=int, default=1, help="Number of epochs")
+parser.add_argument("--base_models", nargs="+", default=["gpt2"], help="Base models")
+parser.add_argument("--policy_model", type=str, default="gpt2", help="Policy model")
+parser.add_argument("--description", type=str, default="", help="Run description")
+
 args = parser.parse_args()
 # Set seed
 seed = 0
@@ -23,12 +27,11 @@ torch.manual_seed(seed)
 description = "Testing with 2 base models."
 # Initialize variables
 train_config = TrainingConfig(
-    num_epochs=1,
-    base_models=["gpt2", "gpt2-medium"],
-    tracker_kwargs={"wandb": {"notes": description}},
+    num_epochs=args.num_epochs,
+    policy_model=args.policy_model,
+    base_models=args.base_models,
+    tracker_kwargs={"wandb": {"notes": args.description}},
 )
-# Delete contents of previous temp logs
-shutil.rmtree(os.path.join(os.getcwd(), "local_logs", "temp"), ignore_errors=True)
 policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
     train_config.policy_model
 )

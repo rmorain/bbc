@@ -101,3 +101,5 @@ Given a list of values,
 - Only using 20%
 
 # Why is perplexity 0?
+
+# Simplify evaluate config
