@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 
 import torch
 from accelerate.logging import get_logger
@@ -26,6 +27,8 @@ train_config = TrainingConfig(
     base_models=["gpt2", "gpt2-medium"],
     tracker_kwargs={"wandb": {"notes": description}},
 )
+# Delete contents of previous temp logs
+shutil.rmtree(os.path.join(os.getcwd(), "local_logs", "temp"), ignore_errors=True)
 policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
     train_config.policy_model
 )
@@ -52,8 +55,6 @@ ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
 )
 
 logger = get_logger(__name__)
-logger.critical("Test")
-
 # Train policy model
 ppo_trainer = train(
     ppo_trainer,

@@ -1,7 +1,6 @@
 import argparse
 import csv
 import os
-import shutil
 import traceback
 from dataclasses import dataclass, field
 from logging import Logger
@@ -91,8 +90,6 @@ def train(
         log_dir = os.path.join(os.getcwd(), "local_logs")
         os.makedirs(log_dir, exist_ok=True)
         log_dir = os.path.join(log_dir, "temp")
-        if os.path.exists(log_dir):
-            shutil.rmtree(log_dir, ignore_errors=True)
         os.makedirs(log_dir, exist_ok=True)
         # Create a unique log file name
         process_index = ppo_trainer.accelerator.process_index
@@ -203,28 +200,30 @@ def train(
                     # Flush the CSV file to ensure data is written
                     csvfile.flush()
 
-            if ppo_trainer.accelerator.is_main_process:
-                import glob
+        ppo_trainer.accelerator.wait_for_everyone()
+        if ppo_trainer.accelerator.is_main_process:
+            # TODO fix this
+            import glob
 
-                import pandas as pd
+            import pandas as pd
 
-                run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
-                log_dir = os.path.join(os.getcwd(), "local_logs", run_id)
-                os.makedirs(log_dir, exist_ok=True)
+            run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
+            log_dir = os.path.join(os.getcwd(), "local_logs", run_id)
+            os.makedirs(log_dir, exist_ok=True)
+            path = os.path.join(os.getcwd(), "local_logs", "temp", "training_log_*")
 
-                all_files = glob.glob(
-                    os.path.join(os.getcwd(), "local_logs", "temp", "training_log_*")
-                )
-                combined_files = pd.concat([pd.read_csv(f) for f in all_files])
+            all_files = glob.glob(path)
+            combined_files = pd.concat([pd.read_csv(f) for f in all_files])
 
-                for f in all_files:
-                    os.remove(f)
-                log_file_combined = os.path.join(log_dir, f"training_log_{run_id}.csv")
-                combined_files.to_csv(log_file_combined, index=False)
+            for f in all_files:
+                os.remove(f)
+            log_file_combined = os.path.join(log_dir, f"training_log_{run_id}.csv")
+            combined_files.to_csv(log_file_combined, index=False)
 
-                print(f"Detailed logs saved to {log_file_combined}")
+            print(f"Detailed logs saved to {log_file_combined}")
 
-            return ppo_trainer
+        ppo_trainer.accelerator.wait_for_everyone()
+        return ppo_trainer
 
     except Exception as e:
         logger.error(f"Training failed: {str(e)}")
