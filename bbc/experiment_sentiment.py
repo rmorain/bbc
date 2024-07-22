@@ -18,6 +18,9 @@ parser.add_argument("--num_epochs", type=int, default=1, help="Number of epochs"
 parser.add_argument("--base_models", nargs="+", default=["gpt2"], help="Base models")
 parser.add_argument("--policy_model", type=str, default="gpt2", help="Policy model")
 parser.add_argument("--description", type=str, default="", help="Run description")
+parser.add_argument(
+    "--dataset", type=str, default="imdb_sst2_processed", help="Dataset name"
+)
 
 args = parser.parse_args()
 # Set seed
@@ -28,6 +31,7 @@ train_config = TrainingConfig(
     num_epochs=args.num_epochs,
     policy_model=args.policy_model,
     base_models=args.base_models,
+    dataset=args.dataset,
     tracker_kwargs={"wandb": {"notes": args.description}},
 )
 policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
