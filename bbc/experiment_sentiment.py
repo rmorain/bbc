@@ -59,6 +59,15 @@ ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
     {"train_config": train_config}
 )
 
+if ppo_trainer.accelerator.is_main_process:
+    os.environ["WANDB_RUN_ID"] = ppo_trainer.accelerator.get_tracker(
+        "wandb"
+    ).tracker._run_id
+
+ppo_trainer.accelerator.wait_for_everyone()
+print(f"{ppo_trainer.accelerator.process_index}: {os.environ.get('WANDB_RUN_ID')}")
+exit()
+
 logger = get_logger(__name__)
 # Train policy model
 ppo_trainer = train(

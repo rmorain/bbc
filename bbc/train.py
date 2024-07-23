@@ -202,7 +202,6 @@ def train(
 
         ppo_trainer.accelerator.wait_for_everyone()
         if ppo_trainer.accelerator.is_main_process:
-            # TODO fix this
             import glob
 
             import pandas as pd
