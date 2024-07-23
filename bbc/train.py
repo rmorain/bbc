@@ -54,6 +54,7 @@ class TrainingConfig:
             "output_scores": True,
         }
     )
+    run_id: str = ""
 
 
 @record
@@ -87,9 +88,7 @@ def train(
 
     try:
         # Create a directory for logs if it doesn't exist
-        log_dir = os.path.join(os.getcwd(), "local_logs")
-        os.makedirs(log_dir, exist_ok=True)
-        log_dir = os.path.join(log_dir, "temp")
+        log_dir = os.path.join(os.getcwd(), "local_logs", config.run_id)
         os.makedirs(log_dir, exist_ok=True)
         # Create a unique log file name
         process_index = ppo_trainer.accelerator.process_index
@@ -207,9 +206,7 @@ def train(
             import pandas as pd
 
             run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
-            log_dir = os.path.join(os.getcwd(), "local_logs", run_id)
-            os.makedirs(log_dir, exist_ok=True)
-            path = os.path.join(os.getcwd(), "local_logs", "temp", "training_log_*")
+            path = os.path.join(log_dir, "training_log_*")
 
             all_files = glob.glob(path)
             combined_files = pd.concat([pd.read_csv(f) for f in all_files])

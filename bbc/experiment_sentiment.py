@@ -3,6 +3,7 @@ import os
 
 import torch
 from accelerate.logging import get_logger
+from accelerate.utils import broadcast_object_list
 from evaluate import EvaluateConfig, evaluate
 from reward_models import SentimentRewardModel
 from train import TrainingConfig, prepare_ppo_trainer, train
@@ -60,13 +61,13 @@ ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
 )
 
 if ppo_trainer.accelerator.is_main_process:
-    os.environ["WANDB_RUN_ID"] = ppo_trainer.accelerator.get_tracker(
-        "wandb"
-    ).tracker._run_id
+    run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
+else:
+    run_id = None
 
-ppo_trainer.accelerator.wait_for_everyone()
-print(f"{ppo_trainer.accelerator.process_index}: {os.environ.get('WANDB_RUN_ID')}")
-exit()
+run_id = broadcast_object_list([run_id])[0]
+print(f"Process ID: {ppo_trainer.accelerator.process_index}: Run ID : {run_id}")
+train_config.run_id = run_id
 
 logger = get_logger(__name__)
 # Train policy model
@@ -90,7 +91,7 @@ if not args.debug and ppo_trainer.accelerator.is_main_process:
     print(f"Policy model saved at {model_dir}")
 
 # Initialize evaluation variables
-eval_config = EvaluateConfig()
+eval_config = EvaluateConfig(run_id=run_id)
 
 ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
     {"eval_config": eval_config}
