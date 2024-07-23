@@ -72,7 +72,7 @@ Given a list of values,
     1. compute the standard deviation of these values
     2. Margin of error = z * std / sqrt(n)
         - z is the confidence interval
-            - The mean is a certain value with CI probability
+            - The mean is a certain value with CI probability:w
         - Bigger the margin of error, the wider the range that the mean could be
         - CI
             - How often the interval would contain the true population parameter if the
@@ -103,3 +103,8 @@ Given a list of values,
 # Why is perplexity 0?
 
 # Simplify evaluate config
+
+# Check out eval logs
+Look at /home/rmorain2/bbc/local_logs/tsqkp0ir/positive_prompts_neg_log_tsqkp0ir.csv
+    - Is this correct?
+    - How to fix?
