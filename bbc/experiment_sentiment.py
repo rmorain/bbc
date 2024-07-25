@@ -105,9 +105,10 @@ test_file_names = [
 if args.debug:
     test_datasets = []
     for file_name in test_file_names:
+        debug_batch_size = 1
         ds = load_from_disk(
             os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
-        ).select(range(2))
+        ).select(range(debug_batch_size * 2))
         test_datasets.append(ds)
     eval_config.project_name = "bbc-test"
 else:

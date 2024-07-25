@@ -108,3 +108,5 @@ Given a list of values,
 Look at /home/rmorain2/bbc/local_logs/tsqkp0ir/positive_prompts_neg_log_tsqkp0ir.csv
     - Is this correct?
     - How to fix?
+    - The dataset is not being split across the processes.
+        - Add dataloader to accelerator?

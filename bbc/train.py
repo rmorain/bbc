@@ -188,7 +188,7 @@ def train(
                                     batch_num,
                                     prefix,
                                     prompt,
-                                    base_model.config.model_type,
+                                    base_model.config._name_or_path,
                                     continuation,
                                     target,
                                     reward.item(),

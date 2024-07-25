@@ -131,6 +131,10 @@ def evaluate(
                         "Target Label",
                         "Reward",
                         "Correct",
+                        "Perplexity",
+                        "Unigram",
+                        "Bigram",
+                        "Trigram",
                     ]
                 )
                 dataloader = DataLoader(
@@ -139,12 +143,7 @@ def evaluate(
                     shuffle=False,
                     collate_fn=collator,
                 )
-                reward_list = []
-                accuracy_list = []
-                perplexity_list = []
-                unigram_list = []
-                bigram_list = []
-                trigram_list = []
+                dataloader = ppo_trainer.accelerator.prepare(dataloader)
 
                 # Test loop
                 for batch_num, batch in enumerate(dataloader):
@@ -165,12 +164,6 @@ def evaluate(
                     accuracy = (rewards.argmax(-1) == targets).long()
                     target_rewards = torch.gather(rewards, 1, targets.unsqueeze(1))
                     target_rewards = [r for r in target_rewards]
-                    reward_list.append(target_rewards[0].item())
-                    accuracy_list.append(accuracy[0].item())
-                    perplexity_list.append(perplexity)
-                    unigram_list.append(diversity[0])
-                    bigram_list.append(diversity[1])
-                    trigram_list.append(diversity[2])
 
                     # Write detailed logs to CSV
                     for base_model_continuation, base_model in zip(
@@ -193,45 +186,23 @@ def evaluate(
                         ):
                             csv_writer.writerow(
                                 [
-                                    test_dataset.info.dataset_name,
                                     batch_num,
                                     prefix,
                                     prompt,
-                                    base_model.config.model_type,
+                                    base_model.config._name_or_path,
                                     continuation,
                                     target,
                                     reward.item(),
                                     correct.item(),
+                                    perplexity,
+                                    diversity[0],
+                                    diversity[1],
+                                    diversity[2],
                                 ]
                             )
 
                     # Flush the CSV file to ensure data is written
                     csvfile.flush()
-
-                reward_mean = np.mean(reward_list)
-                reward_error = margin_of_error(reward_list)
-                accuracy_mean = np.mean(accuracy_list)
-                lo, hi = binomial_ci(accuracy_list)
-                perplexity_mean = np.mean(perplexity_list)
-                perplexity_error = margin_of_error(perplexity_list)
-                unigram_mean = np.mean(unigram_list)
-                unigram_error = margin_of_error(unigram_list)
-                bigram_mean = np.mean(bigram_list)
-                bigram_error = margin_of_error(bigram_list)
-                trigram_mean = np.mean(trigram_list)
-                trigram_error = margin_of_error(trigram_list)
-                test_table.add_data(
-                    test_dataset.info.dataset_name,
-                    f"{reward_mean:.3f} +- {reward_error:.3f}",
-                    f"{accuracy_mean * 100:.3f}% ({lo * 100:.3f}, {hi * 100:.3f})",
-                    f"{perplexity_mean:.3f} +- {perplexity_error:.3f}",
-                    f"{unigram_mean:.3f} +- {unigram_error:.3f}",
-                    f"{bigram_mean:.3f} +- {bigram_error:.3f}",
-                    f"{trigram_mean:.3f} +- {trigram_error:.3f}",
-                )
-
-            ppo_trainer.accelerator.log({"Evaluation results": test_table})
-            logger.info(f"Detailed logs saved to {log_file}", main_process_only=True)
 
             ppo_trainer.accelerator.wait_for_everyone()
             if ppo_trainer.accelerator.is_main_process:
@@ -254,6 +225,29 @@ def evaluate(
                 combined_files.to_csv(log_file_combined, index=False)
 
                 print(f"Detailed logs saved to {log_file_combined}")
+
+                reward_mean = np.mean(combined_files["Reward"])
+                reward_error = margin_of_error(combined_files["Reward"])
+                accuracy_mean = np.mean(combined_files["Correct"])
+                lo, hi = binomial_ci(combined_files["Correct"])
+                perplexity_mean = np.mean(combined_files["Perplexity"])
+                perplexity_error = margin_of_error(combined_files["Perplexity"])
+                unigram_mean = np.mean(combined_files["Unigram"])
+                unigram_error = margin_of_error(combined_files["Unigram"])
+                bigram_mean = np.mean(combined_files["Bigram"])
+                bigram_error = margin_of_error(combined_files["Bigram"])
+                trigram_mean = np.mean(combined_files["Trigram"])
+                trigram_error = margin_of_error(combined_files["Trigram"])
+                test_table.add_data(
+                    test_dataset.info.dataset_name,
+                    f"{reward_mean:.3f} +- {reward_error:.3f}",
+                    f"{accuracy_mean * 100:.3f}% ({lo * 100:.3f}, {hi * 100:.3f})",
+                    f"{perplexity_mean:.3f} +- {perplexity_error:.3f}",
+                    f"{unigram_mean:.3f} +- {unigram_error:.3f}",
+                    f"{bigram_mean:.3f} +- {bigram_error:.3f}",
+                    f"{trigram_mean:.3f} +- {trigram_error:.3f}",
+                )
+        ppo_trainer.accelerator.log({"Evaluation results": test_table})
 
         return None
 
