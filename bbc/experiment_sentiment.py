@@ -1,5 +1,7 @@
 import argparse
 import os
+import time
+from datetime import timedelta
 
 import torch
 from accelerate.logging import get_logger
@@ -62,6 +64,7 @@ ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
 
 if ppo_trainer.accelerator.is_main_process:
     run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
+    start = time.time()
 else:
     run_id = None
 
@@ -90,22 +93,28 @@ if not args.debug and ppo_trainer.accelerator.is_main_process:
     policy_model.save_pretrained(model_dir)
     print(f"Policy model saved at {model_dir}")
 
+if ppo_trainer.accelerator.is_main_process:
+    end = time.time()
+    print(f"Training time: {timedelta(seconds=(end - start))}")
+    start = end
+    print(f"Max GPU memory: {torch.cuda.max_memory_allocated() / 1e9:.3f} GB")
+
 # Initialize evaluation variables
-eval_config = EvaluateConfig(run_id=run_id)
+eval_config = EvaluateConfig(run_id=run_id, batch_size=2)
 
 ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
     {"eval_config": eval_config}
 )
 test_file_names = [
     "positive_prompts_neg",
-    "neutral_prompts_neg",
-    "neutral_prompts_pos",
-    "negative_prompts_pos",
+    # "neutral_prompts_neg",
+    # "neutral_prompts_pos",
+    # "negative_prompts_pos",
 ]
 if args.debug:
     test_datasets = []
     for file_name in test_file_names:
-        debug_batch_size = 1
+        debug_batch_size = 2
         ds = load_from_disk(
             os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
         ).select(range(debug_batch_size * 2))
@@ -129,3 +138,7 @@ evaluate(
     logger,
     eval_config,
 )
+if ppo_trainer.accelerator.is_main_process:
+    end = time.time()
+    print(f"Evaluation time: {timedelta(seconds=(end - start))}")
+    print(f"Max GPU memory: {torch.cuda.max_memory_allocated() / 1e9:.3f} GB")

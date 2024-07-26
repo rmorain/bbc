@@ -13,9 +13,16 @@ from reward_models import RewardModel, SentimentRewardModel
 from scipy.stats import binomtest
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.utils.data import DataLoader
-from train import compute_reward, generate_prefix, prepare_ppo_trainer
+from train import (
+    compute_reward,
+    distinctness,
+    generate_prefix,
+    local_log,
+    prepare_ppo_trainer,
+)
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead, PPOTrainer
+from utils import contiguous_copy
 
 import wandb
 from datasets import Dataset, load_from_disk
@@ -58,6 +65,7 @@ class EvaluateConfig:
         }
     )
     run_id: str = ""
+    num_generations: int = 1
 
 
 @record
@@ -123,18 +131,17 @@ def evaluate(
                 # Write the header
                 csv_writer.writerow(
                     [
+                        "Epoch",
                         "Batch",
                         "Prefix",
                         "Prompt",
+                        "Reward Type",
                         "Model Type",
                         "Continuation",
                         "Target Label",
                         "Reward",
                         "Correct",
                         "Perplexity",
-                        "Unigram",
-                        "Bigram",
-                        "Trigram",
                     ]
                 )
                 dataloader = DataLoader(
@@ -148,11 +155,13 @@ def evaluate(
                 # Test loop
                 for batch_num, batch in enumerate(dataloader):
                     prefixes = generate_prefix(batch, ppo_trainer, config)
+                    prefixes = contiguous_copy(prefixes, config.num_generations)
                     prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
+                    prompts = contiguous_copy(prompts, config.num_generations)
                     prefix_prompt = [
                         prefix + prompt for prefix, prompt in zip(prefixes, prompts)
                     ]
-                    rewards, perplexity, diversity, continuations = compute_reward(
+                    rewards, perplexity, continuations = compute_reward(
                         prompts,
                         prefix_prompt,
                         base_models,
@@ -160,49 +169,35 @@ def evaluate(
                         reward_models,
                         config,
                     )
+                    batch["target"] = contiguous_copy(
+                        batch["target"], config.num_generations
+                    )
+                    batch["target_label"] = contiguous_copy(
+                        batch["target_label"], config.num_generations
+                    )
                     targets = torch.tensor(batch["target"])
                     accuracy = (rewards.argmax(-1) == targets).long()
-                    target_rewards = torch.gather(rewards, 1, targets.unsqueeze(1))
+                    target_rewards = torch.gather(
+                        rewards.mean(0).mean(0), -1, targets.unsqueeze(1)
+                    )
                     target_rewards = [r for r in target_rewards]
 
                     # Write detailed logs to CSV
-                    for base_model_continuation, base_model in zip(
-                        continuations, base_models
-                    ):
-                        for (
-                            prefix,
-                            prompt,
-                            continuation,
-                            target,
-                            reward,
-                            correct,
-                        ) in zip(
-                            prefixes,
-                            prompts,
-                            base_model_continuation,
-                            batch["target_label"],
-                            target_rewards,
-                            accuracy,
-                        ):
-                            csv_writer.writerow(
-                                [
-                                    batch_num,
-                                    prefix,
-                                    prompt,
-                                    base_model.config._name_or_path,
-                                    continuation,
-                                    target,
-                                    reward.item(),
-                                    correct.item(),
-                                    perplexity,
-                                    diversity[0],
-                                    diversity[1],
-                                    diversity[2],
-                                ]
-                            )
-
-                    # Flush the CSV file to ensure data is written
-                    csvfile.flush()
+                    local_log(
+                        reward_models,
+                        rewards,
+                        accuracy,
+                        continuations,
+                        base_models,
+                        prefixes,
+                        prompts,
+                        batch,
+                        csv_writer,
+                        0,
+                        batch_num,
+                        csvfile,
+                        perplexity,
+                    )
 
             ppo_trainer.accelerator.wait_for_everyone()
             if ppo_trainer.accelerator.is_main_process:
@@ -226,18 +221,29 @@ def evaluate(
 
                 print(f"Detailed logs saved to {log_file_combined}")
 
+                unigram = []
+                bigram = []
+                trigram = []
+
+                num_chunks = len(combined_files) // config.num_generations
+                for chunk in np.array_split(combined_files["Continuation"], num_chunks):
+                    u, b, t = distinctness(chunk)
+                    unigram.append(u)
+                    bigram.append(b)
+                    trigram.append(t)
+
                 reward_mean = np.mean(combined_files["Reward"])
                 reward_error = margin_of_error(combined_files["Reward"])
                 accuracy_mean = np.mean(combined_files["Correct"])
                 lo, hi = binomial_ci(combined_files["Correct"])
                 perplexity_mean = np.mean(combined_files["Perplexity"])
                 perplexity_error = margin_of_error(combined_files["Perplexity"])
-                unigram_mean = np.mean(combined_files["Unigram"])
-                unigram_error = margin_of_error(combined_files["Unigram"])
-                bigram_mean = np.mean(combined_files["Bigram"])
-                bigram_error = margin_of_error(combined_files["Bigram"])
-                trigram_mean = np.mean(combined_files["Trigram"])
-                trigram_error = margin_of_error(combined_files["Trigram"])
+                unigram_mean = np.mean(unigram)
+                unigram_error = margin_of_error(unigram)
+                bigram_mean = np.mean(bigram)
+                bigram_error = margin_of_error(bigram)
+                trigram_mean = np.mean(trigram)
+                trigram_error = margin_of_error(trigram)
                 test_table.add_data(
                     test_dataset.info.dataset_name,
                     f"{reward_mean:.3f} +- {reward_error:.3f}",

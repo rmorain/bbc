@@ -110,3 +110,17 @@ Look at /home/rmorain2/bbc/local_logs/tsqkp0ir/positive_prompts_neg_log_tsqkp0ir
     - How to fix?
     - The dataset is not being split across the processes.
         - Add dataloader to accelerator?
+
+# Processed dataset
+- Labels are all wrong?
+    - All negative
+    - Why?
+
+# Training/Eval time
+- Log the time to train/eval
+
+# Fix test table 
+- Compute diversity on a per prompt level (Every 25)
+
+# Maximize evaluation batch size
+- Need to speed this up

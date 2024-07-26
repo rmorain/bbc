@@ -12,7 +12,7 @@
 
 wandb offline
 
-export DATASETS_PATH="/home/rmorain2/bbc/datasets/"
+export DATASETS_PATH="$PWD/datasets/"
 
 # accelerate launch \
 #     --config_file=/home/rmorain2/bbc/multi_gpu.yaml \
@@ -35,9 +35,9 @@ export DATASETS_PATH="/home/rmorain2/bbc/datasets/"
 #     --description "Controlling two models" \
 
 accelerate launch \
-    --config_file=/home/rmorain2/bbc/multi_gpu.yaml \
-    --num_processes 2 \
-    /home/rmorain2/bbc/bbc/experiment_sentiment.py \
+    --config_file=$PWD/multi_gpu.yaml \
+    --num_processes 1 \
+    $PWD/bbc/experiment_sentiment.py \
     --num_epochs 1 \
     --policy_model gpt2 \
     --base_models gpt2 gpt2-medium \

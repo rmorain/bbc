@@ -105,11 +105,13 @@ def train(
                     "Batch",
                     "Prefix",
                     "Prompt",
+                    "Reward Type",
                     "Model Type",
                     "Continuation",
                     "Target Label",
                     "Reward",
                     "Correct",
+                    "Perplexity",
                 ]
             )
 
@@ -127,7 +129,7 @@ def train(
                     prefix_prompt = [
                         prefix + prompt for prefix, prompt in zip(prefixes, prompts)
                     ]
-                    rewards, perplexity, diversity, continuations = compute_reward(
+                    rewards, perplexity, continuations = compute_reward(
                         prompts,
                         prefix_prompt,
                         base_models,
@@ -137,7 +139,9 @@ def train(
                     )
                     targets = torch.tensor(batch["target"])
                     accuracy = (rewards.argmax(-1) == targets).long()
-                    target_rewards = torch.gather(rewards, 1, targets.unsqueeze(1))
+                    target_rewards = torch.gather(
+                        rewards.mean(0).mean(0), -1, targets.unsqueeze(1)
+                    )
                     target_rewards = [r for r in target_rewards]
 
                     prefix_ids = ppo_trainer.tokenizer(prefixes).input_ids
@@ -150,10 +154,10 @@ def train(
                     stats["env/accuracy"] = (
                         torch.mean(accuracy.float()).cpu().numpy().item()
                     )
-                    stats["env/perplexity"] = perplexity
-                    stats["env/distinctness-unigram"] = diversity[0]
-                    stats["env/distinctness-bigram"] = diversity[1]
-                    stats["env/distinctness-trigram"] = diversity[2]
+                    stats["env/perplexity"] = perplexity.flatten().mean(0).item()
+                    # stats["env/distinctness-unigram"] = diversity[0]
+                    # stats["env/distinctness-bigram"] = diversity[1]
+                    # stats["env/distinctness-trigram"] = diversity[2]
 
                     batch["prefix"] = prefixes
                     batch["prompt"] = prompts
@@ -164,41 +168,21 @@ def train(
                         columns_to_log=[],
                     )
                     # Write detailed logs to CSV
-                    for base_model_continuation, base_model in zip(
-                        continuations, base_models
-                    ):
-                        for (
-                            prefix,
-                            prompt,
-                            continuation,
-                            target,
-                            reward,
-                            correct,
-                        ) in zip(
-                            prefixes,
-                            prompts,
-                            base_model_continuation,
-                            batch["target_label"],
-                            target_rewards,
-                            accuracy,
-                        ):
-                            csv_writer.writerow(
-                                [
-                                    epoch,
-                                    batch_num,
-                                    prefix,
-                                    prompt,
-                                    base_model.config._name_or_path,
-                                    continuation,
-                                    target,
-                                    reward.item(),
-                                    correct.item(),
-                                ]
-                            )
-
-                    # Flush the CSV file to ensure data is written
-                    csvfile.flush()
-
+                    local_log(
+                        reward_models,
+                        rewards,
+                        accuracy,
+                        continuations,
+                        base_models,
+                        prefixes,
+                        prompts,
+                        batch,
+                        csv_writer,
+                        epoch,
+                        batch_num,
+                        csvfile,
+                        perplexity,
+                    )
         ppo_trainer.accelerator.wait_for_everyone()
         if ppo_trainer.accelerator.is_main_process:
             import glob
@@ -331,15 +315,15 @@ def compute_reward(
         List[float]: A list (batch size) of reward values.
     """
     continuation = generate_continuation(prefix_prompt, base_models, tokenizers, config)
-    mean_perplexity = perplexity(prompts, continuation, base_models, tokenizers)
-    diversity = distinctness(continuation)
+    base_model_perplexity = perplexity(prompts, continuation, base_models, tokenizers)
+    # diversity = distinctness(continuation)
     scores = compute_scores(
         prompts,
         continuation,
         base_models,
         reward_models,
     )
-    return scores, mean_perplexity, diversity, continuation
+    return scores, base_model_perplexity, continuation
 
 
 def generate_continuation(
@@ -429,8 +413,10 @@ def compute_scores(
     )
 
     # (batch size, num classes)
-    mean_scores = scores_tensor.mean(0).mean(0)
-    return mean_scores
+    # mean_scores = scores_tensor.mean(0).mean(0)
+    # mean_scores = scores_tensor.mean(0)
+    # (reward_model, base models, batch size, num classes)
+    return scores_tensor
 
 
 def prefix_prompt_mask(
@@ -462,7 +448,7 @@ def perplexity(
     continuations: List[List[torch.LongTensor]],
     base_models: List[AutoModelForCausalLM],
     tokenizers: List[AutoTokenizer],
-) -> float:
+) -> List[float]:
     """
     Computes the perplexity of each continuation averaged across the number of base
         models.
@@ -477,7 +463,7 @@ def perplexity(
             base model.
 
     Returns:
-        float: Mean perplexity across base models and continuations.
+        List[float]: Perplexity for each base models and continuations.
     """
     losses = []
     for base_model, tokenizer, base_model_continuations in zip(
@@ -502,32 +488,38 @@ def perplexity(
         outputs = base_model(
             input_ids=input_ids, attention_mask=attention_mask, labels=target_ids
         )
-        losses.append(outputs.loss)
-    perplexity = torch.tensor(losses).mean().exp().item()
+        shift_logits = outputs.logits[..., :-1, :].contiguous()
+        shift_labels = target_ids[..., 1:].contiguous()
+        loss_fct = torch.nn.CrossEntropyLoss()
+        base_model_losses = []
+        for seq_logits, labels in zip(shift_logits, shift_labels):
+            loss = loss_fct(seq_logits, labels)
+            base_model_losses.append(loss)
+        losses.append(base_model_losses)
+    perplexity = torch.tensor(losses).exp()
     return perplexity
 
 
-def distinctness(continuations: List[List[str]]) -> tuple[float]:
+def distinctness(continuations: List[str]) -> tuple[float]:
     """
     Evaluate the number of unique unigrams, bigrams, and trigrams in the list of
         strings.
 
     Args:
-        continuations (List[List[str]]): A list (len(base_models)) of lists
+        continuations (List[str]): A list (len(base_models)) of lists
             (batch size) of tensors containing continuation strings.
     """
     total_words = 0
     unigrams, bigrams, trigrams = set(), set(), set()
 
-    for base_model_continuations in continuations:
-        for continuation in base_model_continuations:
-            o = continuation.split(" ")
-            total_words += len(o)
-            unigrams.update(o)
-            for i in range(len(o) - 1):
-                bigrams.add(o[i] + "_" + o[i + 1])
-            for i in range(len(o) - 2):
-                trigrams.add(o[i] + "_" + o[i + 1] + "_" + o[i + 2])
+    for continuation in continuations:
+        o = continuation.split(" ")
+        total_words += len(o)
+        unigrams.update(o)
+        for i in range(len(o) - 1):
+            bigrams.add(o[i] + "_" + o[i + 1])
+        for i in range(len(o) - 2):
+            trigrams.add(o[i] + "_" + o[i + 1] + "_" + o[i + 2])
 
     if total_words == 0:
         return 0.0, 0.0, 0.0
@@ -537,6 +529,76 @@ def distinctness(continuations: List[List[str]]) -> tuple[float]:
     dist3 = len(trigrams) / total_words
 
     return dist1, dist2, dist3
+
+
+def local_log(
+    reward_models,
+    rewards,
+    accuracy,
+    continuations,
+    base_models,
+    prefixes,
+    prompts,
+    batch,
+    csv_writer,
+    epoch,
+    batch_num,
+    csvfile,
+    perplexity,
+):
+    for reward_model, reward_model_reward, reward_model_accuracy in zip(
+        reward_models, rewards, accuracy
+    ):
+        for (
+            base_model_continuation,
+            base_model,
+            base_model_reward,
+            base_model_accuracy,
+            base_model_perplexity,
+        ) in zip(
+            continuations,
+            base_models,
+            reward_model_reward,
+            reward_model_accuracy,
+            perplexity,
+        ):
+            for (
+                prefix,
+                prompt,
+                continuation,
+                target_label,
+                target,
+                batch_reward,
+                correct,
+                batch_perplexity,
+            ) in zip(
+                prefixes,
+                prompts,
+                base_model_continuation,
+                batch["target_label"],
+                batch["target"],
+                base_model_reward,
+                base_model_accuracy,
+                base_model_perplexity,
+            ):
+                csv_writer.writerow(
+                    [
+                        epoch,
+                        batch_num,
+                        prefix,
+                        prompt,
+                        reward_model.__class__.__name__,
+                        base_model.config._name_or_path,
+                        continuation,
+                        target_label,
+                        batch_reward[target].item(),
+                        correct.item(),
+                        batch_perplexity.item(),
+                    ]
+                )
+
+    # Flush the CSV file to ensure data is written
+    csvfile.flush()
 
 
 if __name__ == "__main__":
