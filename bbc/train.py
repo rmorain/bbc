@@ -317,8 +317,8 @@ def compute_reward(
     continuation = generate_continuation(prefix_prompt, base_models, tokenizers, config)
     base_model_perplexity = perplexity(prompts, continuation, base_models, tokenizers)
     # diversity = distinctness(continuation)
-    scores = compute_scores(
-        prompts,
+    pu.db
+    scores = compute_scores_continuation_only(
         continuation,
         base_models,
         reward_models,
@@ -376,7 +376,7 @@ def generate_continuation(
 
 def compute_scores(
     prompts: List[str],
-    continuation: List[List[torch.LongTensor]],
+    continuations: List[List[torch.LongTensor]],
     base_models: List[AutoModelForCausalLM],
     reward_models: List[RewardModel],
 ) -> List[List[float]]:
@@ -399,7 +399,7 @@ def compute_scores(
     # (num base models * batch size)
     prompt_continuations = []
     # For base models
-    for base_model_continuations in continuation:
+    for base_model_continuations in continuations:
         for prompt, continuation in zip(prompts, base_model_continuations):
             prompt_continuation = prompt + continuation
             prompt_continuations.append(prompt_continuation)
@@ -416,6 +416,22 @@ def compute_scores(
     # mean_scores = scores_tensor.mean(0).mean(0)
     # mean_scores = scores_tensor.mean(0)
     # (reward_model, base models, batch size, num classes)
+    return scores_tensor
+
+
+def compute_scores_continuation_only(
+    continuations: List[List[torch.LongTensor]],
+    reward_models: List[RewardModel],
+) -> List[List[float]]:
+    scores = []
+    for base_model_continuations in continuations:
+        for continuation in base_model_continuations:
+            for model in reward_models:
+                s = model(continuation)
+                scores.append(s)
+    scores_tensor = torch.tensor(scores).reshape(
+        len(reward_models), len(continuations), len(continuations[0]), len(scores[0][0])
+    )
     return scores_tensor
 
 

@@ -107,9 +107,9 @@ ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
 )
 test_file_names = [
     "positive_prompts_neg",
-    # "neutral_prompts_neg",
-    # "neutral_prompts_pos",
-    # "negative_prompts_pos",
+    "neutral_prompts_neg",
+    "neutral_prompts_pos",
+    "negative_prompts_pos",
 ]
 if args.debug:
     test_datasets = []
