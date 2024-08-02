@@ -317,10 +317,8 @@ def compute_reward(
     continuation = generate_continuation(prefix_prompt, base_models, tokenizers, config)
     base_model_perplexity = perplexity(prompts, continuation, base_models, tokenizers)
     # diversity = distinctness(continuation)
-    pu.db
     scores = compute_scores_continuation_only(
         continuation,
-        base_models,
         reward_models,
     )
     return scores, base_model_perplexity, continuation
@@ -425,10 +423,9 @@ def compute_scores_continuation_only(
 ) -> List[List[float]]:
     scores = []
     for base_model_continuations in continuations:
-        for continuation in base_model_continuations:
-            for model in reward_models:
-                s = model(continuation)
-                scores.append(s)
+        for model in reward_models:
+            s = model(base_model_continuations)
+            scores.append(s)
     scores_tensor = torch.tensor(scores).reshape(
         len(reward_models), len(continuations), len(continuations[0]), len(scores[0][0])
     )
