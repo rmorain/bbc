@@ -1,6 +1,7 @@
 import argparse
 import csv
 import os
+import time
 import traceback
 from dataclasses import dataclass, field
 from logging import Logger
@@ -123,6 +124,9 @@ def train(
 
             # Training loop
             for epoch in range(config.num_epochs):
+                if ppo_trainer.accelerator.is_main_process:
+                    print(f"Begin epoch: {epoch}")
+                    start = time.time()
                 for batch_num, batch in enumerate(ppo_trainer.dataloader):
                     prefixes = generate_prefix(batch, ppo_trainer, config)
                     prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
@@ -183,6 +187,8 @@ def train(
                         csvfile,
                         perplexity,
                     )
+                if ppo_trainer.accelerator.is_main_process:
+                    print(f"End epoch {epoch} Duration: {time.time() - start}")
         ppo_trainer.accelerator.wait_for_everyone()
         if ppo_trainer.accelerator.is_main_process:
             import glob
@@ -206,8 +212,10 @@ def train(
         return ppo_trainer
 
     except Exception as e:
-        logger.error(f"Training failed: {str(e)}")
-        logger.error(traceback.format_exc())
+        # logger.error(f"Training failed: {str(e)}")
+        # logger.error(traceback.format_exc())
+        print(f"Training failed: {str(e)}")
+        print(traceback.format_exc())
 
         return None
 
