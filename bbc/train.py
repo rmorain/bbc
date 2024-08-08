@@ -295,7 +295,7 @@ def generate_prefix(
     prefix = [
         query_prefix[i][len(batch["query"][i]) :] for i in range(len(query_prefix))
     ]
-    prefix_str = ppo_trainer.tokenizer.batch_decode(prefix)
+    prefix_str = ppo_trainer.tokenizer.batch_decode(prefix, skip_special_tokens=True)
 
     return prefix_str
 
@@ -379,6 +379,11 @@ def generate_continuation(
                 s[len(pp) : config.continuation_max_str_length]
                 for s, pp in zip(prefix_prompt_continuation_str, prefix_prompt)
             ]
+            if not all(continuation):
+                print("ERROR: Missing continuations")
+                print(continuation)
+                print(prefix_prompt)
+                print(prefix_prompt_continuation_str)
             continuations.append(continuation)
     return continuations
 

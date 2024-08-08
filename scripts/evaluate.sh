@@ -10,16 +10,19 @@
 #SBATCH --mail-user=rmorain2@byu.edu   # email address
 #SBATCH --qos=cs
 #SBATCH --output=/home/rmorain2/bbc/logs/slurm-%j.out
-#
-# Enable wandb in offline mode
-export WANDB_MODE=offline
 
-wandb enabled
+wandb offline
+export DATASETS_PATH="$PWD/datasets/"
 
-export DATASETS_PATH="/home/rmorain2/bbc/datasets/"
+# accelerate launch \
+    #  --config_file=$PWD/bbc/multi_gpu.yaml \
+#     --num_processes 8 \
+#     /home/rmorain2/bbc/bbc/evaluate.py \
+#     --policy_model /home/rmorain2/bbc/saved_models/gpt2_f55v2cw1 \
 
 accelerate launch \
-    --config_file=/home/rmorain2/bbc/multi_gpu.yaml \
-    --num_processes 8 \
-    /home/rmorain2/bbc/bbc/evaluate.py \
-    --policy_model /home/rmorain2/bbc/saved_models/gpt2_f55v2cw1 \
+    --config_file=$PWD/multi_gpu.yaml \
+    --num_processes 1 \
+    $PWD/bbc/evaluate.py \
+    --policy_model gpt2 \
+    --debug

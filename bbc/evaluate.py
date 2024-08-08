@@ -1,6 +1,7 @@
 import argparse
 import csv
 import os
+import time
 import traceback
 from dataclasses import dataclass, field
 from logging import Logger
@@ -9,6 +10,7 @@ from typing import Dict, List
 import numpy as np
 import scipy.stats as stats
 import torch
+from accelerate.utils import broadcast_object_list
 from reward_models import RewardModel, SentimentRewardModel
 from scipy.stats import binomtest
 from torch.distributed.elastic.multiprocessing.errors import record
@@ -128,7 +130,7 @@ def evaluate(
 
             # Open the CSV file for writing
             with open(log_file, "w", newline="") as csvfile:
-                csv_writer = csv.writer(csvfile)
+                csv_writer = csv.writer(csvfile, escapechar="\\")
 
                 # Write the header
                 csv_writer.writerow(
@@ -319,10 +321,10 @@ if __name__ == "__main__":
         base_model_tokenizers.append(tokenizer)
 
     test_file_names = [
-        "positive_prompts_neg",
-        "neutral_prompts_neg",
+        # "positive_prompts_neg",
+        # "neutral_prompts_neg",
         "neutral_prompts_pos",
-        "negative_prompts_pos",
+        # "negative_prompts_pos",
     ]
 
     if args.debug:
@@ -343,6 +345,15 @@ if __name__ == "__main__":
     reward_model = SentimentRewardModel()
     logger = Logger(__name__)
     ppo_trainer = prepare_ppo_trainer(policy_model, test_datasets[0], config)
+    if ppo_trainer.accelerator.is_main_process:
+        run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
+        start = time.time()
+    else:
+        run_id = None
+
+    run_id = broadcast_object_list([run_id])[0]
+    print(f"Process ID: {ppo_trainer.accelerator.process_index}: Run ID : {run_id}")
+    config.run_id = run_id
 
     evaluate(
         ppo_trainer,
