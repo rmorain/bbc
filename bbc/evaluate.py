@@ -14,6 +14,7 @@ from scipy.stats import binomtest
 from torch.distributed.elastic.multiprocessing.errors import record
 from torch.utils.data import DataLoader
 from train import (
+    TrainingConfig,
     compute_reward,
     distinctness,
     generate_prefix,
@@ -29,11 +30,12 @@ from datasets import Dataset, load_from_disk
 
 
 @dataclass
-class EvaluateConfig:
+class EvaluateConfig(TrainingConfig):
     batch_size: int = 1
     learning_rate: float = 1.41e-6
     model_name: str = "gpt2"
     log_with: str = "wandb"
+    base_models: List[str] = field(default_factory=lambda: ["gpt2"])
     ratio_threshold: float = 5.0
     use_score_scaling: bool = True
     use_score_norm: bool = True
@@ -288,20 +290,40 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--run_id", type=str, help="WandB Run ID from training")
+    parser.add_argument(
+        "--base_models", nargs="+", default=["gpt2"], help="Base models"
+    )
+    parser.add_argument("--policy_model", type=str, default="gpt2", help="Policy model")
+    parser.add_argument("--description", type=str, default="", help="Run description")
+    parser.add_argument(
+        "--dataset", type=str, default="imdb_sst2_processed", help="Dataset name"
+    )
     args = parser.parse_args()
     # Set seed
     seed = 0
     torch.manual_seed(seed)
     # Initialize variables
-    config = EvaluateConfig()
-    policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(config.model_name)
-    base_model = AutoModelForCausalLM.from_pretrained(config.model_name)
-    base_model_tokenizers = [
-        AutoTokenizer.from_pretrained(config.model_name, padding_side="left")
+    config = EvaluateConfig(
+        policy_model=args.policy_model, base_models=args.base_models
+    )
+    policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
+        config.policy_model
+    )
+    config.policy_model = "gpt2"
+    base_models = []
+    base_model_tokenizers = []
+    for base_model_name in config.base_models:
+        base_models.append(AutoModelForCausalLM.from_pretrained(base_model_name))
+        tokenizer = AutoTokenizer.from_pretrained(base_model_name, padding_side="left")
+        tokenizer.pad_token = tokenizer.eos_token
+        base_model_tokenizers.append(tokenizer)
+
+    test_file_names = [
+        "positive_prompts_neg",
+        "neutral_prompts_neg",
+        "neutral_prompts_pos",
+        "negative_prompts_pos",
     ]
-    for t in base_model_tokenizers:
-        t.pad_token = t.eos_token
-    test_file_names = os.listdir(os.environ.get("DATASETS_PATH") + "sentiment_prompts")
 
     if args.debug:
         test_datasets = []
@@ -324,8 +346,7 @@ if __name__ == "__main__":
 
     evaluate(
         ppo_trainer,
-        policy_model,
-        [base_model],
+        base_models,
         base_model_tokenizers,
         [reward_model],
         test_datasets,

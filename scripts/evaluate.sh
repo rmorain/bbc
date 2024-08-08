@@ -1,10 +1,10 @@
 #!/bin/bash
 
 
-#SBATCH --time=00:59:59   # walltime
-#SBATCH --ntasks=$NUM_GPUS   # number of processor cores (i.e. tasks)
+#SBATCH --time=10:09:59   # walltime
+#SBATCH --ntasks=8   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
-#SBATCH --gpus=$NUM_GPUS
+#SBATCH --gpus=8
 #SBATCH --mem-per-cpu=64G   # memory per CPU core
 #SBATCH -J "Evaluate"   # job name
 #SBATCH --mail-user=rmorain2@byu.edu   # email address
@@ -20,5 +20,6 @@ export DATASETS_PATH="/home/rmorain2/bbc/datasets/"
 
 accelerate launch \
     --config_file=/home/rmorain2/bbc/multi_gpu.yaml \
-    --num_processes $NUM_GPUS \
-    /home/rmorain2/bbc/bbc/evaluate.py 
+    --num_processes 8 \
+    /home/rmorain2/bbc/bbc/evaluate.py \
+    --policy_model /home/rmorain2/bbc/saved_models/gpt2_f55v2cw1 \

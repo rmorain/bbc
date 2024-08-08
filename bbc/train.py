@@ -128,6 +128,7 @@ def train(
                     print(f"Begin epoch: {epoch}")
                     start = time.time()
                 for batch_num, batch in enumerate(ppo_trainer.dataloader):
+                    torch.cuda.empty_cache()
                     prefixes = generate_prefix(batch, ppo_trainer, config)
                     prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
                     prefix_prompt = [
@@ -216,6 +217,8 @@ def train(
         # logger.error(traceback.format_exc())
         print(f"Training failed: {str(e)}")
         print(traceback.format_exc())
+        if ppo_trainer.accelerator.is_main_process:
+            ppo_trainer.accelerator.get_tracker("wandb").finish(exit_code=-1)
 
         return None
 
