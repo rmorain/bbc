@@ -189,13 +189,13 @@ def train(
                         csvfile,
                         perplexity,
                     )
-                    if ppo_trainer.accelerator.is_main_process:
+                    if batch_num % 100 == 0 and ppo_trainer.accelerator.is_main_process:
                         available = (
                             psutil.virtual_memory().available
                             * 100
                             / psutil.virtual_memory().total
                         )
-                        print(f"RAM available: {available}%")
+                        print(f" Batch: {batch_num} \t RAM available: {available:.3f}%")
                 if ppo_trainer.accelerator.is_main_process:
                     print(f"End epoch {epoch} Duration: {time.time() - start}")
         ppo_trainer.accelerator.wait_for_everyone()
@@ -226,7 +226,7 @@ def train(
         print(f"Training failed: {str(e)}")
         print(traceback.format_exc())
         if ppo_trainer.accelerator.is_main_process:
-            ppo_trainer.accelerator.get_tracker("wandb").finish(exit_code=-1)
+            ppo_trainer.accelerator.get_tracker("wandb").finish()
         process_index = ppo_trainer.accelerator.process_index
         gpu_memory = torch.cuda.max_memory_allocated() / 1e9
         print(f"Max GPU memory {process_index}: {gpu_memory:.3f} GB")
@@ -306,7 +306,7 @@ def generate_prefix(
     prefix = [
         query_prefix[i][len(batch["query"][i]) :] for i in range(len(query_prefix))
     ]
-    prefix_str = ppo_trainer.tokenizer.batch_decode(prefix, skip_special_tokens=True)
+    prefix_str = ppo_trainer.tokenizer.batch_decode(prefix, skip_special_tokens=False)
 
     return prefix_str
 

@@ -8,6 +8,7 @@ from logging import Logger
 from typing import Dict, List
 
 import numpy as np
+import psutil
 import scipy.stats as stats
 import torch
 from accelerate.utils import broadcast_object_list
@@ -202,6 +203,13 @@ def evaluate(
                         csvfile,
                         perplexity,
                     )
+                    if batch_num % 100 == 0 and ppo_trainer.accelerator.is_main_process:
+                        available = (
+                            psutil.virtual_memory().available
+                            * 100
+                            / psutil.virtual_memory().total
+                        )
+                        print(f" Batch: {batch_num} \t RAM available: {available:.3f}%")
 
             ppo_trainer.accelerator.wait_for_everyone()
             if ppo_trainer.accelerator.is_main_process:
