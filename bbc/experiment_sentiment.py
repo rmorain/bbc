@@ -51,7 +51,7 @@ for base_model_name in train_config.base_models:
 train_dataset = load_from_disk(os.environ.get("DATASETS_PATH") + train_config.dataset)
 if args.debug:
     debug_batch_size = 8
-    train_dataset = train_dataset.select(range(debug_batch_size * 2))
+    train_dataset = train_dataset.select(range(debug_batch_size * 100))
     train_config.batch_size = debug_batch_size
     train_config.mini_batch_size = debug_batch_size
     train_config.project_name = "bbc-test"
@@ -118,7 +118,7 @@ if args.debug:
         debug_batch_size = 2
         ds = load_from_disk(
             os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
-        ).select(range(debug_batch_size * 2))
+        ).select(range(debug_batch_size * 100))
         test_datasets.append(ds)
     eval_config.project_name = "bbc-test"
 else:

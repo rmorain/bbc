@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from logging import Logger
 from typing import Dict, List, Optional
 
+import psutil
 import torch
 from reward_models import RewardModel, SentimentRewardModel
 from torch.distributed.elastic.multiprocessing.errors import record
@@ -188,6 +189,13 @@ def train(
                         csvfile,
                         perplexity,
                     )
+                    if ppo_trainer.accelerator.is_main_process:
+                        available = (
+                            psutil.virtual_memory().available
+                            * 100
+                            / psutil.virtual_memory().total
+                        )
+                        print(f"RAM available: {available}%")
                 if ppo_trainer.accelerator.is_main_process:
                     print(f"End epoch {epoch} Duration: {time.time() - start}")
         ppo_trainer.accelerator.wait_for_everyone()
@@ -219,6 +227,9 @@ def train(
         print(traceback.format_exc())
         if ppo_trainer.accelerator.is_main_process:
             ppo_trainer.accelerator.get_tracker("wandb").finish(exit_code=-1)
+        process_index = ppo_trainer.accelerator.process_index
+        gpu_memory = torch.cuda.max_memory_allocated() / 1e9
+        print(f"Max GPU memory {process_index}: {gpu_memory:.3f} GB")
 
         return None
 
@@ -373,7 +384,7 @@ def generate_continuation(
             )
             prefix_prompt_continuation_str = tokenizer.batch_decode(
                 prefix_prompt_continuation,
-                skip_special_tokens=True,
+                skip_special_tokens=False,
             )
             continuation = [
                 s[len(pp) : config.continuation_max_str_length]

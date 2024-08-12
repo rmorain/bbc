@@ -22,7 +22,6 @@ export DATASETS_PATH="$PWD/datasets/"
 
 accelerate launch \
     --config_file=$PWD/multi_gpu.yaml \
-    --num_processes 1 \
+    --num_processes 8 \
     $PWD/bbc/evaluate.py \
     --policy_model gpt2 \
-    --debug
