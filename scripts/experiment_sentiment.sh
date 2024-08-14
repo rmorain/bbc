@@ -93,4 +93,5 @@ accelerate launch \
     --base_models gpt2-large \
     --dataset imdb_sst2_tokenized \
     --lr 1.41e-3 \
-    --description "Replicating single model control. Continuation score only. " \
+    --description "Does larger learning rate make training faster?" \
+    --debug \
