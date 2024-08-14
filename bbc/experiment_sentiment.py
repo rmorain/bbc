@@ -24,6 +24,7 @@ parser.add_argument("--description", type=str, default="", help="Run description
 parser.add_argument(
     "--dataset", type=str, default="imdb_sst2_processed", help="Dataset name"
 )
+parser.add_argument("--lr", type=float, default=1.41e-6, help="Dataset name")
 
 args = parser.parse_args()
 # Set seed
@@ -35,6 +36,7 @@ train_config = TrainingConfig(
     policy_model=args.policy_model,
     base_models=args.base_models,
     dataset=args.dataset,
+    learning_rate=args.lr,
     tracker_kwargs={"wandb": {"notes": args.description}},
 )
 policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(

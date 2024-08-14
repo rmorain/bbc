@@ -55,22 +55,22 @@ export DATASETS_PATH="$PWD/datasets/"
 #     --description "Debug" \
 #     --debug \
 
-accelerate launch \
-    --config_file=$PWD/multi_gpu.yaml \
-    --num_processes 1 \
-    $PWD/bbc/experiment_sentiment.py \
-    --num_epochs 1 \
-    --policy_model gpt2 \
-    --base_models gpt2 \
-    --dataset sst2_processed \
-    --description "Debug single model" \
-    --debug \
+# accelerate launch \
+#     --config_file=$PWD/multi_gpu.yaml \
+#     --num_processes 1 \
+#     $PWD/bbc/experiment_sentiment.py \
+#     --num_epochs 1 \
+#     --policy_model gpt2 \
+#     --base_models gpt2 \
+#     --dataset sst2_processed \
+#     --description "Debug single model" \
+#     --debug \
 
 # accelerate launch \
 #     --config_file=$PWD/multi_gpu.yaml \
 #     --num_processes 1 \
 #     $PWD/bbc/experiment_sentiment.py \
-#     --num_epochs 3 \
+#     --num_epochs 1 \
 #     --policy_model gpt2 \
 #     --base_models gpt2-large \
 #     --dataset imdb_sst2_tokenized \
@@ -83,3 +83,14 @@ accelerate launch \
 #     --base_models gpt2-large \
 #     --dataset imdb_sst2_tokenized \
 #     --description "Replicating single model control. Continuation score only. " \
+
+accelerate launch \
+    --config_file=$PWD/multi_gpu.yaml \
+    --num_processes 1 \
+    $PWD/bbc/experiment_sentiment.py \
+    --num_epochs 1 \
+    --policy_model gpt2 \
+    --base_models gpt2-large \
+    --dataset imdb_sst2_tokenized \
+    --lr 1.41e-3 \
+    --description "Replicating single model control. Continuation score only. " \
