@@ -151,8 +151,13 @@ def train(
                     target_rewards = [r for r in target_rewards]
 
                     prefix_ids = ppo_trainer.tokenizer(prefixes).input_ids
-                    prefix_prompt_ids = ppo_trainer.tokenizer(prefix_prompt).input_ids
-                    prefix_prompt_ids = [torch.tensor(ids) for ids in prefix_prompt_ids]
+                    import pudb
+
+                    pu.db
+                    prefix_prompt_ids = [
+                        torch.cat((torch.tensor(pre).to(pro.device), pro))
+                        for pre, pro in zip(prefix_ids, batch["prompt"])
+                    ]
                     mask = prefix_prompt_mask(prefix_ids, prefix_prompt_ids)
                     stats = ppo_trainer.step(
                         batch["query"], prefix_prompt_ids, target_rewards, mask
