@@ -22,6 +22,7 @@ from train import (
     distinctness,
     generate_prefix,
     local_log,
+    perplexity,
     prepare_ppo_trainer,
 )
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -166,7 +167,7 @@ def evaluate(
                     prefix_prompt = [
                         prefix + prompt for prefix, prompt in zip(prefixes, prompts)
                     ]
-                    rewards, perplexity, continuations = compute_reward(
+                    rewards, continuations = compute_reward(
                         prompts,
                         prefix_prompt,
                         base_models,
@@ -187,6 +188,10 @@ def evaluate(
                     )
                     target_rewards = [r for r in target_rewards]
 
+                    base_model_perplexity = perplexity(
+                        prompts, continuations, base_models, tokenizers
+                    )
+
                     # Write detailed logs to CSV
                     local_log(
                         reward_models,
@@ -201,9 +206,9 @@ def evaluate(
                         0,
                         batch_num,
                         csvfile,
-                        perplexity,
+                        base_model_perplexity,
                     )
-                    if batch_num % 100 == 0 and ppo_trainer.accelerator.is_main_process:
+                    if batch_num % 10 == 0 and ppo_trainer.accelerator.is_main_process:
                         available = (
                             psutil.virtual_memory().available
                             * 100

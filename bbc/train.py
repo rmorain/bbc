@@ -135,7 +135,7 @@ def train(
                     prefix_prompt = [
                         prefix + prompt for prefix, prompt in zip(prefixes, prompts)
                     ]
-                    rewards, perplexity, continuations = compute_reward(
+                    rewards, continuations = compute_reward(
                         prompts,
                         prefix_prompt,
                         base_models,
@@ -160,7 +160,7 @@ def train(
                     stats["env/accuracy"] = (
                         torch.mean(accuracy.float()).cpu().numpy().item()
                     )
-                    stats["env/perplexity"] = perplexity.flatten().mean(0).item()
+                    # stats["env/perplexity"] = perplexity.flatten().mean(0).item()
                     # stats["env/distinctness-unigram"] = diversity[0]
                     # stats["env/distinctness-bigram"] = diversity[1]
                     # stats["env/distinctness-trigram"] = diversity[2]
@@ -174,6 +174,7 @@ def train(
                         columns_to_log=[],
                     )
                     # Write detailed logs to CSV
+                    dummy_perplexity = torch.ones((len(continuations), len(prompts)))
                     local_log(
                         reward_models,
                         rewards,
@@ -187,9 +188,10 @@ def train(
                         epoch,
                         batch_num,
                         csvfile,
-                        perplexity,
+                        dummy_perplexity,
                     )
-                    if batch_num % 100 == 0 and ppo_trainer.accelerator.is_main_process:
+
+                    if batch_num % 10 == 0 and ppo_trainer.accelerator.is_main_process:
                         available = (
                             psutil.virtual_memory().available
                             * 100
@@ -221,8 +223,6 @@ def train(
         return ppo_trainer
 
     except Exception as e:
-        # logger.error(f"Training failed: {str(e)}")
-        # logger.error(traceback.format_exc())
         print(f"Training failed: {str(e)}")
         print(traceback.format_exc())
         if ppo_trainer.accelerator.is_main_process:
@@ -337,13 +337,12 @@ def compute_reward(
         List[float]: A list (batch size) of reward values.
     """
     continuation = generate_continuation(prefix_prompt, base_models, tokenizers, config)
-    base_model_perplexity = perplexity(prompts, continuation, base_models, tokenizers)
-    # diversity = distinctness(continuation)
+    # base_model_perplexity = perplexity(prompts, continuation, base_models, tokenizers)
     scores = compute_scores_continuation_only(
         continuation,
         reward_models,
     )
-    return scores, base_model_perplexity, continuation
+    return scores, continuation
 
 
 def generate_continuation(
@@ -508,6 +507,7 @@ def perplexity(
         List[float]: Perplexity for each base models and continuations.
     """
     losses = []
+    loss_fct = torch.nn.CrossEntropyLoss()
     for base_model, tokenizer, base_model_continuations in zip(
         base_models, tokenizers, continuations
     ):
@@ -532,7 +532,6 @@ def perplexity(
         )
         shift_logits = outputs.logits[..., :-1, :].contiguous()
         shift_labels = target_ids[..., 1:].contiguous()
-        loss_fct = torch.nn.CrossEntropyLoss()
         base_model_losses = []
         for seq_logits, labels in zip(shift_logits, shift_labels):
             loss = loss_fct(seq_logits, labels)
