@@ -1,10 +1,10 @@
 #!/bin/bash
 
-#SBATCH --time=0:59:59   # walltime
-#SBATCH --ntasks=1   # number of processor cores (i.e. tasks)
+#SBATCH --time=23:59:59   # walltime
+#SBATCH --ntasks=8   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
-#SBATCH --gpus=1
-#SBATCH --mem-per-cpu=64G   # memory per CPU core
+#SBATCH --gpus=8
+#SBATCH --mem-per-cpu=128G   # memory per CPU core
 #SBATCH -J "Sentiment control"   # job name
 #SBATCH --mail-user=rmorain2@byu.edu   # email address
 #SBATCH --qos=cs
@@ -55,13 +55,23 @@ export DATASETS_PATH="$PWD/datasets/"
 #     --description "Debug" \
 #     --debug \
 
+# accelerate launch \
+#     --config_file=$PWD/multi_gpu.yaml \
+#     --num_processes 1 \
+#     $PWD/bbc/experiment_sentiment.py \
+#     --num_epochs 1 \
+#     --policy_model gpt2 \
+#     --base_models gpt2 \
+#     --dataset sst2_processed \
+#     --description "Debug single model" \
+#     --debug \
+
 accelerate launch \
-    --config_file=$PWD/multi_gpu.yaml \
-    --num_processes 1 \
-    $PWD/bbc/experiment_sentiment.py \
-    --num_epochs 1 \
+    --config_file=/home/rmorain2/bbc/multi_gpu.yaml \
+    --num_processes 8 \
+    /home/rmorain2/bbc/bbc/experiment_sentiment.py \
+    --num_epochs 3 \
     --policy_model gpt2 \
-    --base_models gpt2 \
-    --dataset sst2_processed \
-    --description "Debug single model" \
-    --debug \
+    --base_models gpt2-large \
+    --dataset imdb_sst2_tokenized \
+    --description "Replicating single model control. Continuation score only. " \

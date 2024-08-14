@@ -382,19 +382,21 @@ def generate_continuation(
                 pad_token_id=model.config.eos_token_id,
                 **gen_kwargs,
             )
-            prefix_prompt_continuation_str = tokenizer.batch_decode(
-                prefix_prompt_continuation,
+            continuation_ids = [
+                cont_ids[len(pp_ids) :]
+                for cont_ids, pp_ids in zip(prefix_prompt_continuation, input_ids)
+            ]
+            continuation_str = tokenizer.batch_decode(
+                continuation_ids,
                 skip_special_tokens=False,
             )
             continuation = [
-                s[len(pp) : config.continuation_max_str_length]
-                for s, pp in zip(prefix_prompt_continuation_str, prefix_prompt)
+                s[: config.continuation_max_str_length] for s in continuation_str
             ]
             if not all(continuation):
                 print("ERROR: Missing continuations")
                 print(continuation)
                 print(prefix_prompt)
-                print(prefix_prompt_continuation_str)
             continuations.append(continuation)
     return continuations
 
