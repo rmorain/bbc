@@ -88,13 +88,17 @@ ppo_trainer = train(
 )
 
 # Save policy model
-if not args.debug and ppo_trainer.accelerator.is_main_process:
+if args.debug and ppo_trainer.accelerator.is_main_process:
     # Create a directory for saved models if it doesn't exist
     save_dir = os.path.join(os.getcwd(), "saved_models")
     os.makedirs(save_dir, exist_ok=True)
     run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
     model_dir = os.path.join(save_dir, f"{train_config.policy_model}_{run_id}")
     ppo_trainer.save_pretrained(model_dir)
+    # Save v_head
+    ppo_trainer.accelerator.unwrap_model(policy_model.v_head).save_pretrained(
+        os.path.join(model_dir, "v_head")
+    )
     print(f"Policy model saved at {model_dir}")
 
 if ppo_trainer.accelerator.is_main_process:
