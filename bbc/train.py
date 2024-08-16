@@ -200,6 +200,9 @@ def train(
                             / psutil.virtual_memory().total
                         )
                         print(f" Batch: {batch_num} \t RAM available: {available:.3f}%")
+                        gpu_memory = torch.cuda.max_memory_allocated() / 1e9
+                        print(f"Max GPU memory:\t{gpu_memory:.3f} GB")
+
                 if ppo_trainer.accelerator.is_main_process:
                     print(f"End epoch {epoch} Duration: {time.time() - start}")
         ppo_trainer.accelerator.wait_for_everyone()

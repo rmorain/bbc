@@ -124,3 +124,16 @@ Look at /home/rmorain2/bbc/local_logs/tsqkp0ir/positive_prompts_neg_log_tsqkp0ir
 
 # Maximize evaluation batch size
 - Need to speed this up
+
+# Tuning learning rate
+- 1e-4 too big
+- Try 1e-5
+
+# Llama 3.1 8B
+- Debug this
+- Timeout error
+- May not work in parallel for some reason
+- Might be taking a long time because of the batch size
+
+# Infinite training
+- Make job preemptible or restartable

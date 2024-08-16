@@ -25,6 +25,7 @@ parser.add_argument(
     "--dataset", type=str, default="imdb_sst2_processed", help="Dataset name"
 )
 parser.add_argument("--lr", type=float, default=1.41e-6, help="Dataset name")
+parser.add_argument("run_id", type=str, default=None, help="Run id to resume a run")
 
 args = parser.parse_args()
 # Set seed
@@ -65,6 +66,7 @@ ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
 )
 
 if ppo_trainer.accelerator.is_main_process:
+    print(train_config)
     run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
     start = time.time()
 else:
