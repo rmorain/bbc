@@ -24,15 +24,15 @@ export DATASETS_PATH="$PWD/datasets/"
 #     --dataset sst2_processed \
 #     --description "Replicating single model control. Continuation score only. " \
 
-accelerate launch \
-    --config_file=$PWD/multi_gpu.yaml \
-    --num_processes 8 \
-    $PWD/bbc/experiment_sentiment.py \
-    --num_epochs 1 \
-    --policy_model gpt2 \
-    --base_models meta-llama/Meta-Llama-3.1-8B \
-    --dataset sst2_processed \
-    --description "Llama 3.1-8B as base model." \
+# accelerate launch \
+#     --config_file=$PWD/multi_gpu.yaml \
+#     --num_processes 8 \
+#     $PWD/bbc/experiment_sentiment.py \
+#     --num_epochs 1 \
+#     --policy_model gpt2 \
+#     --base_models meta-llama/Meta-Llama-3.1-8B \
+#     --dataset sst2_processed \
+#     --description "Llama 3.1-8B as base model." \
 
 # accelerate launch \
 #     --config_file=$PWD/multi_gpu.yaml \
@@ -55,16 +55,17 @@ accelerate launch \
 #     --description "Debug" \
 #     --debug \
 
-# accelerate launch \
-#     --config_file=$PWD/multi_gpu.yaml \
-#     --num_processes 1 \
-#     $PWD/bbc/experiment_sentiment.py \
-#     --num_epochs 1 \
-#     --policy_model gpt2 \
-#     --base_models gpt2 \
-#     --dataset sst2_processed \
-#     --description "Debug single model" \
-#     --debug \
+# Simple debug
+accelerate launch \
+    --config_file=$PWD/multi_gpu.yaml \
+    --num_processes 1 \
+    $PWD/bbc/experiment_sentiment.py \
+    --num_epochs 1 \
+    --policy_model gpt2 \
+    --base_models gpt2 \
+    --dataset sst2_processed \
+    --description "Debug single model" \
+    --debug \
 
 # accelerate launch \
 #     --config_file=$PWD/multi_gpu.yaml \

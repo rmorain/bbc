@@ -12,6 +12,7 @@ test_results/
 rlhf/constants.py
 local_logs/
 trl
+checkpoints/
 
 #
 # Byte-compiled / optimized / DLL files

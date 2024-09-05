@@ -1,18 +1,25 @@
 import argparse
 import os
+import signal
 import time
 from datetime import timedelta
 
 import torch
 from accelerate.logging import get_logger
 from accelerate.utils import broadcast_object_list
-from evaluate import EvaluateConfig, evaluate
 from reward_models import SentimentRewardModel
 from train import TrainingConfig, prepare_ppo_trainer, train
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead
 
 from datasets import load_from_disk
+
+
+def _reset_handler(sigint, stack_frame):
+    global train_config
+    train_config.signal_reset = True
+    return
+
 
 # Parse command line arguments
 parser = argparse.ArgumentParser()
@@ -25,12 +32,22 @@ parser.add_argument(
     "--dataset", type=str, default="imdb_sst2_processed", help="Dataset name"
 )
 parser.add_argument("--lr", type=float, default=1.41e-6, help="Dataset name")
-parser.add_argument("run_id", type=str, default=None, help="Run id to resume a run")
+parser.add_argument("--run_id", type=str, default=None, help="Run id to resume a run")
+parser.add_argument(
+    "--eval_script",
+    type=str,
+    default="scripts/sentiment_control/debug_evaluate.sh",
+    help="Evaluation script to run after training",
+)
 
 args = parser.parse_args()
 # Set seed
 seed = 0
 torch.manual_seed(seed)
+
+# Setup reset signal
+signal.signal(signal.SIGUSR1, _reset_handler)
+
 # Initialize variables
 train_config = TrainingConfig(
     num_epochs=args.num_epochs,
@@ -38,11 +55,26 @@ train_config = TrainingConfig(
     base_models=args.base_models,
     dataset=args.dataset,
     learning_rate=args.lr,
-    tracker_kwargs={"wandb": {"notes": args.description}},
+    tracker_kwargs={
+        "wandb": {"notes": args.description, "resume": "allow", "id": args.run_id}
+    },
 )
-policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
-    train_config.policy_model
-)
+# Restore checkpoint if restarted
+job_id = os.environ.get("SLURM_JOB_ID")
+restart_count = int(os.getenv("SLURM_RESTART_COUNT", 0))
+if job_id and restart_count > 0:
+    print("Loading policy model from checkpoint")
+    checkpoint_dir = os.path.join("checkpoints", job_id, "policy_models")
+    policy_model_checkpoints = [
+        os.path.join(checkpoint_dir, f) for f in os.listdir(checkpoint_dir)
+    ]
+    policy_model_checkpoints.sort(key=os.path.getmtime, reverse=True)
+    latest_checkpoint = policy_model_checkpoints[0]
+    policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(latest_checkpoint)
+else:
+    policy_model = AutoModelForCausalLMWithValueHead.from_pretrained(
+        train_config.policy_model
+    )
 base_models = []
 base_model_tokenizers = []
 for base_model_name in train_config.base_models:
@@ -88,17 +120,20 @@ ppo_trainer = train(
 )
 
 # Save policy model
+# if not args.debug and ppo_trainer.accelerator.is_main_process:
 if args.debug and ppo_trainer.accelerator.is_main_process:
     # Create a directory for saved models if it doesn't exist
-    save_dir = os.path.join(os.getcwd(), "saved_models")
-    os.makedirs(save_dir, exist_ok=True)
     run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
-    model_dir = os.path.join(save_dir, f"{train_config.policy_model}_{run_id}")
-    ppo_trainer.save_pretrained(model_dir)
-    # Save v_head
-    ppo_trainer.accelerator.unwrap_model(policy_model.v_head).save_pretrained(
-        os.path.join(model_dir, "v_head")
+    if not job_id:
+        save_dir = os.path.join(os.getcwd(), "checkpoints", run_id)
+    else:
+        save_dir = os.path.join(os.getcwd(), "checkpoints", job_id, "policy_models")
+
+    os.makedirs(save_dir, exist_ok=True)
+    model_dir = os.path.join(
+        save_dir, f"{train_config.policy_model}_{run_id}_{restart_count}"
     )
+    ppo_trainer.save_pretrained(model_dir)
     print(f"Policy model saved at {model_dir}")
 
 if ppo_trainer.accelerator.is_main_process:
@@ -107,46 +142,9 @@ if ppo_trainer.accelerator.is_main_process:
     start = end
     print(f"Max GPU memory: {torch.cuda.max_memory_allocated() / 1e9:.3f} GB")
 
-# Initialize evaluation variables
-eval_config = EvaluateConfig(run_id=run_id, batch_size=2)
-
-ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
-    {"eval_config": eval_config}
-)
-test_file_names = [
-    "positive_prompts_neg",
-    "neutral_prompts_neg",
-    "neutral_prompts_pos",
-    "negative_prompts_pos",
-]
-if args.debug:
-    test_datasets = []
-    for file_name in test_file_names:
-        debug_batch_size = 2
-        ds = load_from_disk(
-            os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
-        ).select(range(debug_batch_size * 2))
-        test_datasets.append(ds)
-    eval_config.project_name = "bbc-test"
-else:
-    test_datasets = [
-        load_from_disk(
-            os.environ.get("DATASETS_PATH") + "sentiment_prompts/" + file_name
-        )
-        for file_name in test_file_names
-    ]
-
-# Evaluate policy model
-evaluate(
-    ppo_trainer,
-    base_models,
-    base_model_tokenizers,
-    [reward_model],
-    test_datasets,
-    logger,
-    eval_config,
-)
-if ppo_trainer.accelerator.is_main_process:
-    end = time.time()
-    print(f"Evaluation time: {timedelta(seconds=(end - start))}")
-    print(f"Max GPU memory: {torch.cuda.max_memory_allocated() / 1e9:.3f} GB")
+    if train_config.signal_reset:
+        print("Requeuing job")
+        os.system("scontrol requeue {}".format(os.environ.get("SLURM_JOB_ID")))
+    else:
+        print("Queuing evaluation script")
+        os.system(f"sbatch {args.eval_script} {model_dir}")

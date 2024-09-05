@@ -57,6 +57,7 @@ class TrainingConfig:
         }
     )
     run_id: str = ""
+    signal_reset = False
 
 
 @record
@@ -192,7 +193,6 @@ def train(
                         csvfile,
                         dummy_perplexity,
                     )
-
                     if batch_num % 10 == 0 and ppo_trainer.accelerator.is_main_process:
                         available = (
                             psutil.virtual_memory().available
@@ -202,6 +202,10 @@ def train(
                         print(f" Batch: {batch_num} \t RAM available: {available:.3f}%")
                         gpu_memory = torch.cuda.max_memory_allocated() / 1e9
                         print(f"Max GPU memory:\t{gpu_memory:.3f} GB")
+                    if config.signal_reset:
+                        break
+                if config.signal_reset:
+                    break
 
                 if ppo_trainer.accelerator.is_main_process:
                     print(f"End epoch {epoch} Duration: {time.time() - start}")

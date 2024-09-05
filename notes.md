@@ -137,3 +137,33 @@ Look at /home/rmorain2/bbc/local_logs/tsqkp0ir/positive_prompts_neg_log_tsqkp0ir
 
 # Infinite training
 - Make job preemptible or restartable
+- Decouple train and evaluate
+- Thoughts and questions
+    - Apparently, you cannot resume an offline run with wandb. Therefore, when a job is 
+        restarted it will have to be a new wandb run because running an online run is 
+        impossible. 
+    - What does it look like to restart a run?
+        - When first starting, everything will look the same. Load the specified model,
+            and train normaly.
+        - When a signal interrupts training, save the model.
+        - When the job is restarted, load the saved model and continue training where
+            you left off. 
+    - Questions
+        - How do you handle a signal that interrupts the job?
+        - When a job is restarted, how do you know to load a saved model? How do you 
+            know the job has been restarted? 
+            - I need to pass the path to the saved model in the new job script. 
+                - No I don't. I can check if a saved model already exists and use the 
+                    latest one. I might have to use the slurm job id in the saved models
+                    directory.
+            - How do I run this restart script?
+                - `scontrol requeue <jobid>`
+            - Will it have a different job id?
+                - No
+            - I need access to the old script and add the new model path
+                - The same parameters as before will be run, but if you changed the 
+                    training script then the new training script will be run. You need
+                    to create a new training script for each experiment now.
+        - When a job gets interrupted, do I need to pick up where I left off? How do I
+            do this?
+            - I need to look at the `accelerate` docs for this I think.
