@@ -32,6 +32,10 @@ parser.add_argument(
     "--dataset", type=str, default="imdb_sst2_processed", help="Dataset name"
 )
 parser.add_argument("--lr", type=float, default=1.41e-6, help="Dataset name")
+parser.add_argument("--batch_size", type=float, default=256, help="Big batch size")
+parser.add_argument(
+    "--mini_batch_size", type=float, default=32, help="Small batch size"
+)
 parser.add_argument("--run_id", type=str, default=None, help="Run id to resume a run")
 parser.add_argument(
     "--eval_script",
@@ -55,6 +59,8 @@ train_config = TrainingConfig(
     base_models=args.base_models,
     dataset=args.dataset,
     learning_rate=args.lr,
+    batch_size=args.batch_size,
+    mini_batch_size=args.mini_batch_size,
     tracker_kwargs={
         "wandb": {"notes": args.description, "resume": "allow", "id": args.run_id}
     },
@@ -86,10 +92,11 @@ for base_model_name in train_config.base_models:
 
 train_dataset = load_from_disk(os.environ.get("DATASETS_PATH") + train_config.dataset)
 if args.debug:
-    debug_batch_size = 8
+    debug_batch_size = 256
     train_dataset = train_dataset.select(range(debug_batch_size * 2))
     train_config.batch_size = debug_batch_size
-    train_config.mini_batch_size = debug_batch_size
+    # train_config.mini_batch_size = debug_batch_size
+    train_config.mini_batch_size = 32
     train_config.project_name = "bbc-test"
 reward_model = SentimentRewardModel()
 
