@@ -167,3 +167,7 @@ Look at /home/rmorain2/bbc/local_logs/tsqkp0ir/positive_prompts_neg_log_tsqkp0ir
         - When a job gets interrupted, do I need to pick up where I left off? How do I
             do this?
             - I need to look at the `accelerate` docs for this I think.
+
+# Evaluation batch size
+- Right now it is one by default. Is this correct? I thought I made it so it can be any size.
+- This is probably happening because I decoupled the training ppo trainer. 

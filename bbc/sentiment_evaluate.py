@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import torch
 from accelerate.logging import get_logger
+from accelerate.utils import broadcast_object_list
 from evaluate import EvaluateConfig, evaluate
 from reward_models import SentimentRewardModel
 from train import prepare_ppo_trainer
@@ -44,11 +45,21 @@ ppo_trainer = prepare_ppo_trainer(policy_model, None, eval_config)
 ppo_trainer.accelerator.get_tracker("wandb").store_init_configuration(
     {"eval_config": eval_config}
 )
+if ppo_trainer.accelerator.is_main_process:
+    print(eval_config)
+    run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
+    start = time.time()
+else:
+    run_id = None
+
+run_id = broadcast_object_list([run_id])[0]
+print(f"Process ID: {ppo_trainer.accelerator.process_index}: Run ID : {run_id}")
+eval_config.run_id = run_id
 test_file_names = [
-    "positive_prompts_neg",
+    # "positive_prompts_neg",
     "neutral_prompts_neg",
-    "neutral_prompts_pos",
-    "negative_prompts_pos",
+    # "neutral_prompts_pos",
+    # "negative_prompts_pos",
 ]
 if args.debug:
     test_datasets = []
@@ -59,6 +70,8 @@ if args.debug:
         ).select(range(debug_batch_size * 2))
         test_datasets.append(ds)
     eval_config.project_name = "bbc-test"
+    eval_config.batch_size = debug_batch_size
+    eval_config.mini_batch_size = debug_batch_size
 else:
     test_datasets = [
         load_from_disk(
