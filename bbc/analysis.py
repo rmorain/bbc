@@ -7,8 +7,8 @@ from datasets import load_from_disk
 
 debug = False
 
-# dataset = "sentiment_prompts/positive_prompts_neg"
-dataset = "sst2_processed"
+dataset = "sentiment_prompts/neutral_prompts_neg"
+# dataset = "sst2_processed"
 
 ds = load_from_disk(os.environ.get("DATASETS_PATH") + dataset)
 if debug:
