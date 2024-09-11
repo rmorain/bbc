@@ -1,11 +1,11 @@
 #!/bin/bash
 
-#SBATCH --time=0:10:59   # walltime
+#SBATCH --time=0:20:59   # walltime
 #SBATCH --ntasks=1   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
 #SBATCH --gpus=1
-#SBATCH --mem-per-cpu=64G   # memory per CPU core
-#SBATCH -J "Debug train"   # job name
+#SBATCH --mem-per-cpu=128G   # memory per CPU core
+#SBATCH -J "Llama"   # job name
 #SBATCH --mail-user=rmorain2@byu.edu   # email address
 #SBATCH --qos=cs
 #SBATCH --output=/home/rmorain2/bbc/logs/slurm-%j.out
@@ -22,7 +22,7 @@ accelerate launch \
     $PWD/bbc/sentiment_train.py \
     --num_epochs 1 \
     --policy_model gpt2 \
-    --base_models gpt2 \
+    --base_models meta-llama/Meta-Llama-3.1-8B \
     --dataset sst2_processed \
     --description "Debug single model" \
     --debug \

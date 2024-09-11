@@ -56,10 +56,10 @@ run_id = broadcast_object_list([run_id])[0]
 print(f"Process ID: {ppo_trainer.accelerator.process_index}: Run ID : {run_id}")
 eval_config.run_id = run_id
 test_file_names = [
-    # "positive_prompts_neg",
+    "positive_prompts_neg",
     "neutral_prompts_neg",
-    # "neutral_prompts_pos",
-    # "negative_prompts_pos",
+    "neutral_prompts_pos",
+    "negative_prompts_pos",
 ]
 if args.debug:
     test_datasets = []

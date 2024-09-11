@@ -35,7 +35,7 @@ from datasets import Dataset, load_from_disk
 
 @dataclass
 class EvaluateConfig(TrainingConfig):
-    batch_size: int = 1
+    batch_size: int = 8
     learning_rate: float = 1.41e-6
     model_name: str = "gpt2"
     log_with: str = "wandb"

@@ -62,6 +62,7 @@ train_config = TrainingConfig(
 # Restore checkpoint if restarted
 job_id = os.environ.get("SLURM_JOB_ID")
 restart_count = int(os.getenv("SLURM_RESTART_COUNT", 0))
+print(f"Restart count: {restart_count}")
 if job_id and restart_count > 0:
     print("Loading policy model from checkpoint")
     checkpoint_dir = os.path.join("checkpoints", job_id, "policy_models")
@@ -145,6 +146,3 @@ if ppo_trainer.accelerator.is_main_process:
     if train_config.signal_reset:
         print("Requeuing job")
         os.system("scontrol requeue {}".format(os.environ.get("SLURM_JOB_ID")))
-    else:
-        print("Queuing evaluation script")
-        os.system(f"sbatch {args.eval_script} {model_dir}")
