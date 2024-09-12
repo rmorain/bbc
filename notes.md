@@ -171,3 +171,43 @@ Look at /home/rmorain2/bbc/local_logs/tsqkp0ir/positive_prompts_neg_log_tsqkp0ir
 # Evaluation batch size
 - Right now it is one by default. Is this correct? I thought I made it so it can be any size.
 - This is probably happening because I decoupled the training ppo trainer. 
+
+# What are my goals right now?
+1. Replicate results on `imdb_sst2_tokenized`
+    - What are the conditions?
+    - What results am I trying to replicate?
+        - Neutral --> Positive 71.72 
+        - Negative --> Positive 14.48
+        - Positive --> Negative 35.52
+        - Neutral --> Negative 90.24
+        - Want to match these or beat these
+    - Different water
+        - batch_size:"256"
+        - dataset:"imdb_sst2"
+        - debug:"False"
+        - entropy_coef:"1e-3"
+        - epochs:"5"
+        - learning_rate:"1.41e-6"
+        - mini_batch_size:"32"
+        - prefix_max_new_tokens:"15"
+        - ratio_threshold:"5"
+        - reward_model:"gpt2-large"
+        - text_max_new_tokens:"20"
+        - Also, I think the reward classifier only looks at the continuation
+    - What needs to be done in order to do this?
+        - I think this should work already
+        - I may want to test a smaller dataset with one epoch first
+        - Need to queue evaluation after training
+    - If I run out of time, then I will have to make it a requeueable run
+2. Train controller to control Llama 3.1 8B
+    - Need to decide what size controller to use
+3. Experiment with different size controllers
+    - small, medium, large
+    - Possibly just train head for comparison
+4. Human evaluation
+    - Plan evaluation
+    - Gather data
+    - Create and send survey
+5. Rewrite paper
+    - Reframe introduction
+    - Include new experiments

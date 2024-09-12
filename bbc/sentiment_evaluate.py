@@ -20,9 +20,15 @@ parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 parser.add_argument("--base_models", nargs="+", default=["gpt2"], help="Base models")
 parser.add_argument("--policy_model", type=str, default="gpt2", help="Policy model")
 parser.add_argument("--description", type=str, default="", help="Run description")
+parser.add_argument("--batch_size", type=float, default=256, help="Big batch size")
+parser.add_argument(
+    "--mini_batch_size", type=float, default=32, help="Small batch size"
+)
 args = parser.parse_args()
 # Initialize evaluation variables
-eval_config = EvaluateConfig()
+eval_config = EvaluateConfig(
+    batch_size=args.batch_size, mini_batch_size=args.mini_batch_size
+)
 
 # Set seed
 seed = 0

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --time=5:10:59   # walltime
+#SBATCH --time=23:59:59   # walltime
 #SBATCH --ntasks=8   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
 #SBATCH --gpus=8
@@ -8,7 +8,7 @@
 #SBATCH -J "Evaluate"   # job name
 #SBATCH --mail-user=rmorain2@byu.edu   # email address
 #SBATCH --qos=cs
-#SBATCH --output=/home/rmorain2/bbc/logs/slurm-%j.out
+#SBATCH --output=/home/rmorain2/bbc/logs/sentiment_control/llama/slurm-%j-eval.out
 
 # Pass in policy model as a command line argument with gpt2 as default
 POLICY_MODEL="${1:-gpt2}"
@@ -23,5 +23,5 @@ accelerate launch \
     --num_processes 8 \
     $PWD/bbc/sentiment_evaluate.py \
     --policy_model $POLICY_MODEL \
-    --base_models gpt2-large \
-    --description "Evaluate" \
+    --base_models meta-llama/Meta-Llama-3.1-8B \
+    --description "Evaluate Llama as base model" \

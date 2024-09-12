@@ -92,11 +92,11 @@ for base_model_name in train_config.base_models:
 
 train_dataset = load_from_disk(os.environ.get("DATASETS_PATH") + train_config.dataset)
 if args.debug:
-    debug_batch_size = 256
+    debug_batch_size = 8
     train_dataset = train_dataset.select(range(debug_batch_size * 2))
     train_config.batch_size = debug_batch_size
     # train_config.mini_batch_size = debug_batch_size
-    train_config.mini_batch_size = 32
+    train_config.mini_batch_size = debug_batch_size
     train_config.project_name = "bbc-test"
 reward_model = SentimentRewardModel()
 
@@ -128,8 +128,8 @@ ppo_trainer = train(
 )
 
 # Save policy model
-# if not args.debug and ppo_trainer.accelerator.is_main_process:
 if args.debug and ppo_trainer.accelerator.is_main_process:
+    # if not args.debug and ppo_trainer.accelerator.is_main_process:
     # Create a directory for saved models if it doesn't exist
     run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
     if not job_id:
@@ -143,6 +143,10 @@ if args.debug and ppo_trainer.accelerator.is_main_process:
     )
     ppo_trainer.save_pretrained(model_dir)
     print(f"Policy model saved at {model_dir}")
+    with open(
+        os.path.join(os.getcwd(), "checkpoints", job_id, "model_name.txt"), "w"
+    ) as f:
+        f.write(model_dir)
 
 if ppo_trainer.accelerator.is_main_process:
     end = time.time()
