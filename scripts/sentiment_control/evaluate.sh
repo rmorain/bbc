@@ -8,7 +8,7 @@
 #SBATCH -J "Evaluate"   # job name
 #SBATCH --mail-user=rmorain2@byu.edu   # email address
 #SBATCH --qos=cs
-#SBATCH --output=/home/rmorain2/bbc/logs/slurm-%j.out
+#SBATCH --output=/home/rmorain2/bbc/logs/sentiment_control/slurm-%j-eval.out
 
 # Pass in policy model as a command line argument with gpt2 as default
 POLICY_MODEL="${1:-gpt2}"
@@ -24,4 +24,4 @@ accelerate launch \
     $PWD/bbc/sentiment_evaluate.py \
     --policy_model $POLICY_MODEL \
     --base_models gpt2-large \
-    --description "Evaluate" \
+    --description "Evaluate $POLICY_MODEL" \

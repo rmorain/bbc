@@ -7,7 +7,7 @@ from datasets import load_from_disk
 
 debug = False
 
-dataset = "sentiment_prompts/neutral_prompts_neg"
+dataset = "imdb_sst2_tokenized"
 # dataset = "sst2_processed"
 
 ds = load_from_disk(os.environ.get("DATASETS_PATH") + dataset)

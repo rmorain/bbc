@@ -128,8 +128,7 @@ ppo_trainer = train(
 )
 
 # Save policy model
-if args.debug and ppo_trainer.accelerator.is_main_process:
-    # if not args.debug and ppo_trainer.accelerator.is_main_process:
+if not args.debug and ppo_trainer.accelerator.is_main_process:
     # Create a directory for saved models if it doesn't exist
     run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
     if not job_id:

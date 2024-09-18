@@ -27,9 +27,9 @@ class TrainingConfig:
     base_models: List[str] = field(default_factory=lambda: ["gpt2"])
     log_with: str = "wandb"
     ratio_threshold: float = 5.0
-    use_score_scaling: bool = True
-    use_score_norm: bool = True
-    whiten_rewards: bool = True
+    use_score_scaling: bool = False
+    use_score_norm: bool = False
+    whiten_rewards: bool = False
     kl_penalty: str = "abs"
     mini_batch_size: int = 32
     init_kl_coef: float = 0.0
@@ -119,7 +119,8 @@ def train(
             )
 
             # Pre-training setup
-            base_models = ppo_trainer.accelerator.prepare(base_models)
+            base_models = [base_model.cuda() for base_model in base_models]
+            print([base_model.device for base_model in base_models])
             reward_models = [
                 model.to(ppo_trainer.accelerator.device) for model in reward_models
             ]

@@ -8,7 +8,7 @@
 #SBATCH -J "Debug train"   # job name
 #SBATCH --mail-user=rmorain2@byu.edu   # email address
 #SBATCH --qos=cs
-#SBATCH --output=/home/rmorain2/bbc/logs/slurm-%j.out
+#SBATCH --output=/home/rmorain2/bbc/logs/sentiment_control/debug/slurm-%j-train.out
 
 wandb offline
 
