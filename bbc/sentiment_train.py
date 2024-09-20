@@ -32,10 +32,8 @@ parser.add_argument(
     "--dataset", type=str, default="imdb_sst2_processed", help="Dataset name"
 )
 parser.add_argument("--lr", type=float, default=1.41e-6, help="Dataset name")
-parser.add_argument("--batch_size", type=float, default=256, help="Big batch size")
-parser.add_argument(
-    "--mini_batch_size", type=float, default=32, help="Small batch size"
-)
+parser.add_argument("--batch_size", type=int, default=256, help="Big batch size")
+parser.add_argument("--mini_batch_size", type=int, default=32, help="Small batch size")
 parser.add_argument("--run_id", type=str, default=None, help="Run id to resume a run")
 parser.add_argument(
     "--eval_script",

@@ -23,6 +23,6 @@ accelerate launch \
     --num_epochs 1 \
     --policy_model gpt2 \
     --base_models gpt2 \
-    --dataset sst2_processed \
+    --dataset hello_world_2048 \
     --description "Debug single model" \
     --debug \

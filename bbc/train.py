@@ -43,7 +43,7 @@ class TrainingConfig:
     prefix_gen_kwargs: Dict = field(
         default_factory=lambda: {
             "min_length": -1,
-            "top_p": 0.9,
+            "top_p": 1.0,
             "do_sample": True,
             "output_scores": True,
         }
@@ -51,8 +51,8 @@ class TrainingConfig:
     continuation_gen_kwargs: Dict = field(
         default_factory=lambda: {
             "min_length": -1,
-            "top_p": 0.9,
-            "do_sample": True,
+            # "top_p": 0.9,
+            "do_sample": False,
             "output_scores": True,
         }
     )
