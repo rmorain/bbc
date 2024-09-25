@@ -43,6 +43,7 @@ class TrainingConfig:
     prefix_gen_kwargs: Dict = field(
         default_factory=lambda: {
             "min_length": -1,
+            "top_k": 0.0,
             "top_p": 1.0,
             "do_sample": True,
             "output_scores": True,
@@ -52,6 +53,7 @@ class TrainingConfig:
         default_factory=lambda: {
             "min_length": -1,
             # "top_p": 0.9,
+            "top_k": 0.0,
             "do_sample": False,
             "output_scores": True,
         }
@@ -132,6 +134,7 @@ def train(
                     start = time.time()
                 for batch_num, batch in enumerate(ppo_trainer.dataloader):
                     torch.cuda.empty_cache()
+                    torch.manual_seed(0)
                     prefixes = generate_prefix(batch, ppo_trainer, config)
                     prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
                     prefix_prompt = [
