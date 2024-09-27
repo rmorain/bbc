@@ -7,8 +7,9 @@ from datasets import load_from_disk
 
 debug = False
 
-dataset = "imdb_sst2_tokenized"
+# dataset = "imdb_sst2_tokenized"
 # dataset = "sst2_processed"
+dataset = "hello_world_2048"
 
 ds = load_from_disk(os.environ.get("DATASETS_PATH") + dataset)
 if debug:

@@ -68,7 +68,7 @@ class SentimentRewardModel(RewardModel):
         device: Optional[Union[torch.device, int]] = -1,
         kwargs: Optional[Dict] = {
             "top_k": 2,
-            "function_to_apply": "softmax",
+            "function_to_apply": None,
             "batch_size": 16,
         },
     ):

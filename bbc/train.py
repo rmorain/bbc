@@ -27,9 +27,9 @@ class TrainingConfig:
     base_models: List[str] = field(default_factory=lambda: ["gpt2"])
     log_with: str = "wandb"
     ratio_threshold: float = 5.0
-    use_score_scaling: bool = False
-    use_score_norm: bool = False
-    whiten_rewards: bool = False
+    use_score_scaling: bool = True
+    use_score_norm: bool = True
+    whiten_rewards: bool = True
     kl_penalty: str = "abs"
     mini_batch_size: int = 32
     init_kl_coef: float = 0.0
