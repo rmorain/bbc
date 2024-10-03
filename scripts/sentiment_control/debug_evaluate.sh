@@ -24,6 +24,6 @@ accelerate launch \
     --num_processes 1 \
     $PWD/bbc/sentiment_evaluate.py \
     --policy_model $POLICY_MODEL \
-    --base_models gpt2 \
+    --base_models gpt2-large \
     --description "Debug single model" \
     --debug \

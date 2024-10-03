@@ -524,32 +524,31 @@ def perplexity(
     for base_model, tokenizer, base_model_continuations in zip(
         base_models, tokenizers, continuations
     ):
-        prompt_continuations = [
-            p + c for p, c in zip(prompts, base_model_continuations)
-        ]
-        inputs = tokenizer(prompt_continuations, padding=True, return_tensors="pt")
-        input_ids = inputs.input_ids.to(base_model.device)
-        attention_mask = inputs.attention_mask.to(base_model.device)
-        target_ids = input_ids.clone()
-        continuation_ids = tokenizer(base_model_continuations).input_ids
-        continuation_lengths = torch.tensor(
-            [len(continuation) for continuation in continuation_ids]
-        )
-        for target, i in zip(target_ids, continuation_lengths):
-            j = len(target) - i
-            target[:j] = -100
+        for prompt, continuation in zip(prompts, base_model_continuations):
+            prompt_continuation = prompt + continuation
+            inputs = tokenizer(prompt_continuation, return_tensors="pt")
+            input_ids = inputs.input_ids.to(base_model.device)
+            attention_mask = inputs.attention_mask.to(base_model.device)
+            target_ids = input_ids.clone()
+            continuation_ids = tokenizer(base_model_continuations).input_ids
+            continuation_lengths = torch.tensor(
+                [len(continuation) for continuation in continuation_ids]
+            )
+            for target, i in zip(target_ids, continuation_lengths):
+                j = len(target) - i
+                target[:j] = -100
 
-        # make prompt ids in target ids -100
-        outputs = base_model(
-            input_ids=input_ids, attention_mask=attention_mask, labels=target_ids
-        )
-        shift_logits = outputs.logits[..., :-1, :].contiguous()
-        shift_labels = target_ids[..., 1:].contiguous()
-        base_model_losses = []
-        for seq_logits, labels in zip(shift_logits, shift_labels):
-            loss = loss_fct(seq_logits, labels)
-            base_model_losses.append(loss)
-        losses.append(base_model_losses)
+            # make prompt ids in target ids -100
+            outputs = base_model(
+                input_ids=input_ids, attention_mask=attention_mask, labels=target_ids
+            )
+            shift_logits = outputs.logits[..., :-1, :].contiguous()
+            shift_labels = target_ids[..., 1:].contiguous()
+            base_model_losses = []
+            for seq_logits, labels in zip(shift_logits, shift_labels):
+                loss = loss_fct(seq_logits, labels)
+                base_model_losses.append(loss)
+            losses.append(base_model_losses)
     perplexity = torch.tensor(losses).exp()
     return perplexity
 
