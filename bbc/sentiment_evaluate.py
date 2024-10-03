@@ -30,6 +30,8 @@ eval_config = EvaluateConfig(
     batch_size=args.batch_size,
     mini_batch_size=args.mini_batch_size,
     tracker_kwargs={"wandb": {"notes": args.description}},
+    base_models=args.base_models,
+    policy_model=args.policy_model,
 )
 
 # Set seed

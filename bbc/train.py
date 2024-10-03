@@ -134,7 +134,6 @@ def train(
                     start = time.time()
                 for batch_num, batch in enumerate(ppo_trainer.dataloader):
                     torch.cuda.empty_cache()
-                    torch.manual_seed(0)
                     prefixes = generate_prefix(batch, ppo_trainer, config)
                     prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
                     prefix_prompt = [
@@ -280,6 +279,7 @@ def prepare_ppo_trainer(
         remove_unused_columns=False,
         tracker_project_name=config.project_name,
         tracker_kwargs=config.tracker_kwargs,
+        optimize_device_cache=True,
     )
     tokenizer = AutoTokenizer.from_pretrained(config.policy_model)
     tokenizer.pad_token = tokenizer.eos_token

@@ -10,7 +10,7 @@
 #SBATCH --qos=cs
 #SBATCH --output=/home/rmorain2/bbc/logs/sentiment_control/hello-world-%j-train.out
 
-wandb offline
+wandb disabled
 
 export DATASETS_PATH="$PWD/datasets/"
 
@@ -19,8 +19,8 @@ accelerate launch \
     --num_processes 1 \
     $PWD/bbc/sentiment_train.py \
     --num_epochs 3 \
-    --batch_size 32 \
-    --mini_batch_size 16 \
+    --batch_size 1 \
+    --mini_batch_size 1 \
     --policy_model gpt2 \
     --base_models gpt2-large \
     --dataset hello_world_2048 \

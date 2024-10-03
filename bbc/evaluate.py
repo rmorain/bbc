@@ -37,7 +37,7 @@ from datasets import Dataset, load_from_disk
 class EvaluateConfig(TrainingConfig):
     batch_size: int = 8
     learning_rate: float = 1.41e-6
-    model_name: str = "gpt2"
+    policy_model: str = "gpt2"
     log_with: str = "wandb"
     base_models: List[str] = field(default_factory=lambda: ["gpt2"])
     ratio_threshold: float = 5.0
@@ -103,7 +103,10 @@ def evaluate(
     """
     try:
         # Pre-training setup
-        base_models = ppo_trainer.accelerator.prepare(base_models)
+        base_models = [base_model.cuda() for base_model in base_models]
+        print([base_model.device for base_model in base_models])
+        print(f"Max GPU memory: {torch.cuda.max_memory_allocated() / 1e9:.3f} GB")
+
         reward_models = [
             model.to(ppo_trainer.accelerator.device) for model in reward_models
         ]
@@ -123,6 +126,7 @@ def evaluate(
         os.makedirs(log_dir, exist_ok=True)
 
         for test_dataset in test_datasets:
+            print(f"Evaluating {test_dataset}")
             # Create a directory for logs if it doesn't exist
             # Create a unique log file name
             process_index = ppo_trainer.accelerator.process_index
@@ -160,61 +164,72 @@ def evaluate(
 
                 # Test loop
                 for batch_num, batch in enumerate(dataloader):
-                    prefixes = generate_prefix(batch, ppo_trainer, config)
-                    prefixes = contiguous_copy(prefixes, config.num_generations)
-                    prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
-                    prompts = contiguous_copy(prompts, config.num_generations)
-                    prefix_prompt = [
-                        prefix + prompt for prefix, prompt in zip(prefixes, prompts)
-                    ]
-                    rewards, continuations = compute_reward(
-                        prompts,
-                        prefix_prompt,
-                        base_models,
-                        tokenizers,
-                        reward_models,
-                        config,
-                    )
-                    batch["target"] = contiguous_copy(
-                        batch["target"], config.num_generations
-                    )
-                    batch["target_label"] = contiguous_copy(
-                        batch["target_label"], config.num_generations
-                    )
-                    targets = torch.tensor(batch["target"])
-                    accuracy = (rewards.argmax(-1) == targets).long()
-                    target_rewards = torch.gather(
-                        rewards.mean(0).mean(0), -1, targets.unsqueeze(1)
-                    )
-                    target_rewards = [r for r in target_rewards]
-
-                    base_model_perplexity = perplexity(
-                        prompts, continuations, base_models, tokenizers
-                    )
-
-                    # Write detailed logs to CSV
-                    local_log(
-                        reward_models,
-                        rewards,
-                        accuracy,
-                        continuations,
-                        base_models,
-                        prefixes,
-                        prompts,
-                        batch,
-                        csv_writer,
-                        0,
-                        batch_num,
-                        csvfile,
-                        base_model_perplexity,
-                    )
-                    if batch_num % 10 == 0 and ppo_trainer.accelerator.is_main_process:
-                        available = (
-                            psutil.virtual_memory().available
-                            * 100
-                            / psutil.virtual_memory().total
+                    with torch.no_grad():
+                        torch.cuda.empty_cache()
+                        prefixes = generate_prefix(batch, ppo_trainer, config)
+                        prefixes = contiguous_copy(prefixes, config.num_generations)
+                        prompts = ppo_trainer.tokenizer.batch_decode(batch["prompt"])
+                        prompts = contiguous_copy(prompts, config.num_generations)
+                        prefix_prompt = [
+                            prefix + prompt for prefix, prompt in zip(prefixes, prompts)
+                        ]
+                        rewards, continuations = compute_reward(
+                            prompts,
+                            prefix_prompt,
+                            base_models,
+                            tokenizers,
+                            reward_models,
+                            config,
                         )
-                        print(f" Batch: {batch_num} \t RAM available: {available:.3f}%")
+                        batch["target"] = contiguous_copy(
+                            batch["target"], config.num_generations
+                        )
+                        batch["target_label"] = contiguous_copy(
+                            batch["target_label"], config.num_generations
+                        )
+                        targets = torch.tensor(batch["target"])
+                        accuracy = (rewards.argmax(-1) == targets).long()
+                        target_rewards = torch.gather(
+                            rewards.mean(0).mean(0), -1, targets.unsqueeze(1)
+                        )
+                        target_rewards = [r for r in target_rewards]
+
+                        base_model_perplexity = perplexity(
+                            prompts, continuations, base_models, tokenizers
+                        )
+
+                        # Write detailed logs to CSV
+                        local_log(
+                            reward_models,
+                            rewards,
+                            accuracy,
+                            continuations,
+                            base_models,
+                            prefixes,
+                            prompts,
+                            batch,
+                            csv_writer,
+                            0,
+                            batch_num,
+                            csvfile,
+                            base_model_perplexity,
+                        )
+                        print(
+                            f"Max GPU memory: {torch.cuda.max_memory_allocated() / 1e9:.3f} GB"
+                        )
+
+                        if (
+                            batch_num % 10 == 0
+                            and ppo_trainer.accelerator.is_main_process
+                        ):
+                            available = (
+                                psutil.virtual_memory().available
+                                * 100
+                                / psutil.virtual_memory().total
+                            )
+                            print(
+                                f" Batch: {batch_num} \t RAM available: {available:.3f}%"
+                            )
 
             ppo_trainer.accelerator.wait_for_everyone()
             if ppo_trainer.accelerator.is_main_process:
@@ -242,6 +257,7 @@ def evaluate(
                 bigram = []
                 trigram = []
 
+                print("Calculating distinctness")
                 num_chunks = len(combined_files) // config.num_generations
                 for chunk in np.array_split(combined_files["Continuation"], num_chunks):
                     u, b, t = distinctness(chunk)
@@ -249,6 +265,7 @@ def evaluate(
                     bigram.append(b)
                     trigram.append(t)
 
+                print("Logging results")
                 reward_mean = np.mean(combined_files["Reward"])
                 reward_error = margin_of_error(combined_files["Reward"])
                 accuracy_mean = np.mean(combined_files["Correct"])
@@ -275,8 +292,8 @@ def evaluate(
         return None
 
     except Exception as e:
-        logger.error(f"Evaluation failed: {str(e)}")
-        logger.error(traceback.format_exc())
+        print(f"Evaluation failed: {str(e)}")
+        print(traceback.format_exc())
 
         return None
 

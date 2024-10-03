@@ -19,6 +19,8 @@ accelerate launch \
     --num_processes 8 \
     $PWD/bbc/sentiment_train.py \
     --num_epochs 1 \
+    --batch_size 128 \
+    --mini_batch_size 32 \
     --policy_model gpt2 \
     --base_models meta-llama/Meta-Llama-3.1-8B \
     --dataset sst2_processed \
