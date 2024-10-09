@@ -126,24 +126,24 @@ ppo_trainer = train(
 )
 
 # Save policy model
-if not args.debug and ppo_trainer.accelerator.is_main_process:
-    # Create a directory for saved models if it doesn't exist
-    run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
-    if not job_id:
-        save_dir = os.path.join(os.getcwd(), "checkpoints", run_id)
-    else:
-        save_dir = os.path.join(os.getcwd(), "checkpoints", job_id, "policy_models")
+# if not args.debug and ppo_trainer.accelerator.is_main_process:
+#     # Create a directory for saved models if it doesn't exist
+#     run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
+#     if not job_id:
+#         save_dir = os.path.join(os.getcwd(), "checkpoints", run_id)
+#     else:
+#         save_dir = os.path.join(os.getcwd(), "checkpoints", job_id, "policy_models")
 
-    os.makedirs(save_dir, exist_ok=True)
-    model_dir = os.path.join(
-        save_dir, f"{train_config.policy_model}_{run_id}_{restart_count}"
-    )
-    ppo_trainer.save_pretrained(model_dir)
-    print(f"Policy model saved at {model_dir}")
-    with open(
-        os.path.join(os.getcwd(), "checkpoints", job_id, "model_name.txt"), "w"
-    ) as f:
-        f.write(model_dir)
+#     os.makedirs(save_dir, exist_ok=True)
+#     model_dir = os.path.join(
+#         save_dir, f"{train_config.policy_model}_{run_id}_{restart_count}"
+#     )
+#     ppo_trainer.save_pretrained(model_dir)
+#     print(f"Policy model saved at {model_dir}")
+#     with open(
+#         os.path.join(os.getcwd(), "checkpoints", job_id, "model_name.txt"), "w"
+#     ) as f:
+#         f.write(model_dir)
 
 if ppo_trainer.accelerator.is_main_process:
     end = time.time()

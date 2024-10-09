@@ -126,9 +126,12 @@ def train(
             reward_models = [
                 model.to(ppo_trainer.accelerator.device) for model in reward_models
             ]
+            best_accuracy = 0.0
 
             # Training loop
             for epoch in range(config.num_epochs):
+                epoch_accuracy = 0.0
+                num_batches = 0
                 if ppo_trainer.accelerator.is_main_process:
                     print(f"Begin epoch: {epoch}")
                     start = time.time()
@@ -196,6 +199,8 @@ def train(
                         csvfile,
                         dummy_perplexity,
                     )
+                    epoch_accuracy += stats["env/accuracy"]
+                    num_batches += 1
                     if batch_num % 10 == 0 and ppo_trainer.accelerator.is_main_process:
                         available = (
                             psutil.virtual_memory().available
@@ -209,8 +214,13 @@ def train(
                         break
                 if config.signal_reset:
                     break
-
                 if ppo_trainer.accelerator.is_main_process:
+                    avg_epoch_accuracy = epoch_accuracy / num_batches
+                    # Check if this is the best model so far
+                    if avg_epoch_accuracy > best_accuracy:
+                        best_accuracy = avg_epoch_accuracy
+                        # Save the best model
+                        save_model(ppo_trainer, config)
                     print(f"End epoch {epoch} Duration: {time.time() - start}")
         ppo_trainer.accelerator.wait_for_everyone()
         if ppo_trainer.accelerator.is_main_process:
@@ -244,6 +254,32 @@ def train(
         print(f"Max GPU memory {process_index}: {gpu_memory:.3f} GB")
 
         return None
+
+
+def save_model(ppo_trainer, train_config):
+    # Save policy model
+    if ppo_trainer.accelerator.is_main_process:
+        # Create a directory for saved models if it doesn't exist
+        run_id = ppo_trainer.accelerator.get_tracker("wandb").tracker._run_id
+        job_id = os.environ.get("SLURM_JOB_ID")
+        if not job_id:
+            # save_dir = os.path.join(os.getcwd(), "checkpoints", run_id)
+            print("Not saving debug run")
+            return None
+        else:
+            save_dir = os.path.join(os.getcwd(), "checkpoints", job_id, "policy_models")
+
+        os.makedirs(save_dir, exist_ok=True)
+        restart_count = int(os.getenv("SLURM_RESTART_COUNT", 0))
+        model_dir = os.path.join(
+            save_dir, f"{train_config.policy_model}_{run_id}_{restart_count}"
+        )
+        ppo_trainer.save_pretrained(model_dir)
+        print(f"Policy model saved at {model_dir}")
+        with open(
+            os.path.join(os.getcwd(), "checkpoints", job_id, "model_name.txt"), "w"
+        ) as f:
+            f.write(model_dir)
 
 
 def prepare_ppo_trainer(
