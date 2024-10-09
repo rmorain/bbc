@@ -520,35 +520,32 @@ def perplexity(
         List[float]: Perplexity for each base models and continuations.
     """
     losses = []
-    loss_fct = torch.nn.CrossEntropyLoss()
     for base_model, tokenizer, base_model_continuations in zip(
         base_models, tokenizers, continuations
     ):
+        losses.append([])
         for prompt, continuation in zip(prompts, base_model_continuations):
             prompt_continuation = prompt + continuation
             inputs = tokenizer(prompt_continuation, return_tensors="pt")
             input_ids = inputs.input_ids.to(base_model.device)
+            # If eos token, only include one
+            eos_index = (input_ids == tokenizer.eos_token_id).nonzero()
+            if eos_index.numel() > 0:
+                eos_index = eos_index[0, 1]
+            else:
+                eos_index = input_ids.shape[-1]
+            input_ids = input_ids[:, : eos_index + 1]
             attention_mask = inputs.attention_mask.to(base_model.device)
+            attention_mask = attention_mask[:, : eos_index + 1]
             target_ids = input_ids.clone()
-            continuation_ids = tokenizer(base_model_continuations).input_ids
-            continuation_lengths = torch.tensor(
-                [len(continuation) for continuation in continuation_ids]
-            )
-            for target, i in zip(target_ids, continuation_lengths):
-                j = len(target) - i
-                target[:j] = -100
+            prompt_ids = tokenizer(prompt).input_ids
+            target_ids[:, : len(prompt_ids)] = -100
 
             # make prompt ids in target ids -100
             outputs = base_model(
                 input_ids=input_ids, attention_mask=attention_mask, labels=target_ids
             )
-            shift_logits = outputs.logits[..., :-1, :].contiguous()
-            shift_labels = target_ids[..., 1:].contiguous()
-            base_model_losses = []
-            for seq_logits, labels in zip(shift_logits, shift_labels):
-                loss = loss_fct(seq_logits, labels)
-                base_model_losses.append(loss)
-            losses.append(base_model_losses)
+            losses[-1].append(outputs.loss)
     perplexity = torch.tensor(losses).exp()
     return perplexity
 

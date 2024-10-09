@@ -193,7 +193,6 @@ def evaluate(
                             rewards.mean(0).mean(0), -1, targets.unsqueeze(1)
                         )
                         target_rewards = [r for r in target_rewards]
-
                         base_model_perplexity = perplexity(
                             prompts, continuations, base_models, tokenizers
                         )
