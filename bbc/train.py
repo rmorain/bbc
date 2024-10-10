@@ -570,9 +570,9 @@ def perplexity(
                 eos_index = eos_index[0, 1]
             else:
                 eos_index = input_ids.shape[-1]
-            input_ids = input_ids[:, : eos_index + 1]
+            input_ids = input_ids[:, :eos_index]
             attention_mask = inputs.attention_mask.to(base_model.device)
-            attention_mask = attention_mask[:, : eos_index + 1]
+            attention_mask = attention_mask[:, :eos_index]
             target_ids = input_ids.clone()
             prompt_ids = tokenizer(prompt).input_ids
             target_ids[:, : len(prompt_ids)] = -100
@@ -581,7 +581,10 @@ def perplexity(
             outputs = base_model(
                 input_ids=input_ids, attention_mask=attention_mask, labels=target_ids
             )
-            losses[-1].append(outputs.loss)
+            loss = (
+                outputs.loss if not outputs.loss.isnan() else 0
+            )  # baseline perplexity
+            losses[-1].append(loss)
     perplexity = torch.tensor(losses).exp()
     return perplexity
 
