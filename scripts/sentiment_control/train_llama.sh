@@ -18,12 +18,12 @@ accelerate launch \
     --config_file=$PWD/multi_gpu.yaml \
     --num_processes 8 \
     $PWD/bbc/sentiment_train.py \
-    --num_epochs 1 \
+    --num_epochs 5 \
     --batch_size 128 \
     --mini_batch_size 32 \
     --policy_model gpt2 \
     --base_models meta-llama/Meta-Llama-3.1-8B \
-    --dataset sst2_processed \
+    --dataset imdb_sst2_processed \
     --description "Llama as base model" \
 
 # Read the model name from the file

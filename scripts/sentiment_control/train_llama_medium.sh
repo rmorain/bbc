@@ -5,10 +5,10 @@
 #SBATCH --nodes=1   # number of nodes
 #SBATCH --gpus=8
 #SBATCH --mem-per-cpu=128G   # memory per CPU core
-#SBATCH -J "Replicating different water"   # job name
+#SBATCH -J "Llama as base model"   # job name
 #SBATCH --mail-user=rmorain2@byu.edu   # email address
 #SBATCH --qos=cs
-#SBATCH --output=/home/rmorain2/bbc/logs/sentiment_control/slurm-%j-train.out
+#SBATCH --output=/home/rmorain2/bbc/logs/sentiment_control/llama/slurm-%j-train.out
 
 wandb offline
 
@@ -19,12 +19,14 @@ accelerate launch \
     --num_processes 8 \
     $PWD/bbc/sentiment_train.py \
     --num_epochs 5 \
-    --policy_model gpt2 \
-    --base_models gpt2-large \
+    --batch_size 128 \
+    --mini_batch_size 32 \
+    --policy_model gpt2-medium \
+    --base_models meta-llama/Meta-Llama-3.1-8B \
     --dataset imdb_sst2_processed \
-    --description "small --> large" \
+    --description "Llama as base model" \
 
 # Read the model name from the file
 MODEL_NAME=$(cat $PWD/checkpoints/$SLURM_JOB_ID/model_name.txt)
 
-sbatch --job-name=eval_${MODEL_NAME} scripts/sentiment_control/evaluate.sh $MODEL_NAME
+sbatch --job-name=eval_${MODEL_NAME} scripts/sentiment_control/evaluate_llama.sh $MODEL_NAME

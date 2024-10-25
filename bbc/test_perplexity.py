@@ -2,7 +2,7 @@ import pandas as pd
 from train import perplexity
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-df = pd.read_csv("local_logs/95y9f39c/negative_prompts_pos_log_95y9f39c.csv")
+df = pd.read_csv("local_logs/s7qhpmoq/neutral_prompts_neg_log_s7qhpmoq.csv")
 
 x = df.iloc[df.Perplexity.argmax()]
 
